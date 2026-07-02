@@ -158,8 +158,6 @@ export default function POS() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.grid} showsVerticalScrollIndicator={false}>
-        {products.map((p) => {
       <ScrollView contentContainerStyle={styles.grid}>
         {safeProducts.map((p) => {
           const inCart = cart[p.id] || 0;

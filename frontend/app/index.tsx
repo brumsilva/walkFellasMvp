@@ -7,7 +7,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { saveSession, walkerLogin, staffLogin, getToken, getUser } from '@/src/lib/api';
+import { saveSessionFromLoginResponse, walkerLogin, staffLogin, getToken, getUser } from '@/src/lib/api';
 import { theme } from '@/src/lib/theme';
 import { hap } from '@/src/lib/haptics';
 import { useToast } from '@/src/lib/toast';
@@ -53,13 +53,13 @@ export default function AuthScreen() {
       if (mode === 'walker') {
         if (!eventCode || pin.length < 4) { toast.show('Enter event code and 4-6 digit PIN', 'error'); return; }
         const r: any = await walkerLogin(eventCode.trim(), pin);
-        await saveSession(r.access_token, r.user);
+        await saveSessionFromLoginResponse(r);
         hap.success();
         routeByRole('walker');
       } else {
         if (!email || !password) { toast.show('Enter email and password', 'error'); return; }
         const r: any = await staffLogin(email.trim(), password);
-        await saveSession(r.access_token, r.user);
+        await saveSessionFromLoginResponse(r);
         hap.success();
         routeByRole(r.role);
       }
