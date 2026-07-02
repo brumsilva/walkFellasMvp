@@ -42,8 +42,8 @@ export default function Dashboard() {
     setWasteLoading(true);
     try {
       const [ws, ps] = await Promise.all([
-        api<WasteLog[]>('/waste?status_filter=pending'),
-        api<Product[]>('/products'),
+        api<any>('/waste?status_filter=pending'),
+        api<any>('/products'),
       ]);
       setWasteItems(ws); setProducts(ps);
     } catch (e: any) { toast.show(e.message || 'Load failed', 'error'); }

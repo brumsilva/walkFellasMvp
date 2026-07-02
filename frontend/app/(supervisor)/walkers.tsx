@@ -26,13 +26,28 @@ export default function Walkers() {
   const load = useCallback(async () => {
     try {
       const [ws, act, pr] = await Promise.all([
-        api<Walker[]>('/walkers'),
-        api<ShiftInfo[]>('/dashboard/active-walkers'),
-        api<Product[]>('/products'),
+        api<any>('/walkers'),
+        api<any>('/dashboard/active-walkers'),
+        api<any>('/products'),
       ]);
-      setWalkers(ws);
-      setActive(act);
-      setProducts(pr);
+      const walkerList = Array.isArray(ws)
+        ? ws
+        : Array.isArray(ws?.walkers)
+          ? ws.walkers
+          : [];
+      const activeList = Array.isArray(act)
+        ? act
+        : Array.isArray(act?.active)
+          ? act.active
+          : [];
+      const productList = Array.isArray(pr)
+        ? pr
+        : Array.isArray(pr?.products)
+          ? pr.products
+          : [];
+      setWalkers(walkerList);
+      setActive(activeList);
+      setProducts(productList);
     } catch (e: any) {
       toast.show(e.message || 'Load failed', 'error');
     } finally {

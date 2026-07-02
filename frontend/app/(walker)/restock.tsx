@@ -27,13 +27,24 @@ export default function Restock() {
   const load = useCallback(async () => {
     try {
       const [prods, restocks, sug] = await Promise.all([
-        api<Product[]>('/products'),
-        api<any[]>('/restocks?status_filter=pending'),
+        api<any>('/products'),
+        api<any>('/restocks?status_filter=pending'),
         api<{ suggestions: Suggestion[] }>('/restocks/suggestions').catch(() => ({ suggestions: [] })),
       ]);
-      setProducts(prods);
-      setPending(restocks);
-      setSuggestions(sug.suggestions || []);
+      const productList = Array.isArray(prods)
+        ? prods
+        : Array.isArray(prods?.products)
+          ? prods.products
+          : [];
+      const pendingList = Array.isArray(restocks)
+        ? restocks
+        : Array.isArray(restocks?.restocks)
+          ? restocks.restocks
+          : [];
+      const suggestionList = Array.isArray(sug?.suggestions) ? sug.suggestions : [];
+      setProducts(productList);
+      setPending(pendingList);
+      setSuggestions(suggestionList);
     } catch (e: any) {
       toast.show(e.message || 'Load failed', 'error');
     } finally {
