@@ -1,22 +1,26 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "walkFellas",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
-    "userInterfaceStyle": "automatic",
+    "scheme": "walkfellas",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Photograph waste items for supervisor validation"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#0A0A0A"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": ["android.permission.CAMERA"]
     },
     "web": {
       "bundler": "metro",
@@ -26,17 +30,19 @@
     "plugins": [
       "expo-router",
       [
+        "expo-camera",
+        { "cameraPermission": "Photograph waste items for supervisor validation" }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000000"
+          "backgroundColor": "#0A0A0A"
         }
       ]
     ],
-    "experiments": {
-      "typedRoutes": true
-    }
+    "experiments": { "typedRoutes": true }
   }
 }
