@@ -89,8 +89,10 @@ export default function Walkers() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>Walkers</Text>
-        <Text style={styles.subtitle}>{active.length} active / {walkers.length} total</Text>
+        <View>
+          <Text style={styles.title}>Walkers</Text>
+          <Text style={styles.subtitle}>{active.length} active / {walkers.length} total</Text>
+        </View>
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
         {walkers.map((w) => {
