@@ -14,11 +14,11 @@ import { useToast } from '@/src/lib/toast';
 type Product = { id: string; sku: string; name: string };
 type Category = 'broken' | 'spilled' | 'expired' | 'other';
 
-const CATEGORIES: { key: Category; label: string }[] = [
-  { key: 'broken', label: 'BROKEN' },
-  { key: 'spilled', label: 'SPILLED' },
-  { key: 'expired', label: 'EXPIRED' },
-  { key: 'other', label: 'OTHER' },
+const CATEGORIES: { key: Category; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'broken', label: 'Broken', icon: 'alert-circle' },
+  { key: 'spilled', label: 'Spilled', icon: 'water' },
+  { key: 'expired', label: 'Expired', icon: 'time' },
+  { key: 'other', label: 'Other', icon: 'ellipsis-horizontal' },
 ];
 
 export default function Waste() {
@@ -107,8 +107,8 @@ export default function Waste() {
       <View style={{ flex: 1, backgroundColor: '#000' }}>
         <CameraView ref={camRef} style={{ flex: 1 }} facing="back" />
         <View style={styles.camBar}>
-          <Pressable onPress={() => setShowCamera(false)} testID="cam-cancel">
-            <Text style={styles.camBtnText}>CANCEL</Text>
+          <Pressable style={styles.camCancelBtn} onPress={() => setShowCamera(false)} testID="cam-cancel">
+            <Text style={styles.camBtnText}>Cancel</Text>
           </Pressable>
           <Pressable style={styles.camTrigger} onPress={snap} testID="cam-snap" />
           <View style={{ width: 60 }} />
@@ -120,117 +120,146 @@ export default function Waste() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>LOG WASTE</Text>
+        <Text style={styles.title}>Log waste</Text>
+        <Text style={styles.subtitle}>Track broken or spilled stock</Text>
       </View>
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 20 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: 40 }}>
         <View>
-          <Text style={styles.label}>ITEM</Text>
-          <View style={{ gap: 6, marginTop: 8 }}>
-            {products.map((p) => (
-              <Pressable
-                key={p.id}
-                testID={`waste-product-${p.sku}`}
-                style={[styles.itemRow, productId === p.id && styles.itemRowActive]}
-                onPress={() => { hap.light(); setProductId(p.id); }}
-              >
-                <Text style={[styles.itemText, productId === p.id && { color: '#FFF' }]}>{p.name}</Text>
-                <Text style={[styles.itemSku, productId === p.id && { color: '#FFF' }]}>{p.sku}</Text>
-              </Pressable>
-            ))}
+          <Text style={styles.label}>Item</Text>
+          <View style={{ gap: 8, marginTop: 8 }}>
+            {products.map((p) => {
+              const active = productId === p.id;
+              return (
+                <Pressable
+                  key={p.id}
+                  testID={`waste-product-${p.sku}`}
+                  style={[styles.itemRow, active && styles.itemRowActive]}
+                  onPress={() => { hap.light(); setProductId(p.id); }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemText, active && styles.itemTextActive]}>{p.name}</Text>
+                    <Text style={[styles.itemSku, active && styles.itemSkuActive]}>{p.sku}</Text>
+                  </View>
+                  {active && <Ionicons name="checkmark-circle" size={22} color="#FFF" />}
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
         <View>
-          <Text style={styles.label}>CATEGORY</Text>
+          <Text style={styles.label}>Category</Text>
           <View style={styles.chips}>
-            {CATEGORIES.map((c) => (
-              <Pressable
-                key={c.key}
-                testID={`cat-${c.key}`}
-                style={[styles.chip, category === c.key && styles.chipActive]}
-                onPress={() => { hap.light(); setCategory(c.key); }}
-              >
-                <Text style={[styles.chipText, category === c.key && { color: '#FFF' }]}>{c.label}</Text>
-              </Pressable>
-            ))}
+            {CATEGORIES.map((c) => {
+              const active = category === c.key;
+              return (
+                <Pressable
+                  key={c.key}
+                  testID={`cat-${c.key}`}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => { hap.light(); setCategory(c.key); }}
+                >
+                  <Ionicons name={c.icon} size={14} color={active ? '#FFF' : theme.color.muted} />
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{c.label}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
         <View>
-          <Text style={styles.label}>QUANTITY</Text>
+          <Text style={styles.label}>Quantity</Text>
           <View style={styles.qtyBox}>
             <Pressable style={styles.qtyBtn} onPress={() => { hap.light(); setQuantity(Math.max(1, quantity - 1)); }} testID="qty-minus">
-              <Text style={styles.qtyBtnText}>−</Text>
+              <Ionicons name="remove" size={20} color={theme.color.onSurface} />
             </Pressable>
             <Text style={styles.qtyVal}>{quantity}</Text>
             <Pressable style={styles.qtyBtn} onPress={() => { hap.light(); setQuantity(quantity + 1); }} testID="qty-plus">
-              <Text style={styles.qtyBtnText}>+</Text>
+              <Ionicons name="add" size={20} color={theme.color.onSurface} />
             </Pressable>
           </View>
         </View>
 
         <View>
-          <Text style={styles.label}>PHOTO (OPTIONAL)</Text>
+          <Text style={styles.label}>Photo (optional)</Text>
           {photo ? (
             <View style={{ marginTop: 8 }}>
-              <Image source={{ uri: `data:image/jpeg;base64,${photo}` }} style={{ width: '100%', height: 200 }} contentFit="cover" />
+              <Image source={{ uri: `data:image/jpeg;base64,${photo}` }} style={styles.photoPreview} contentFit="cover" />
               <Pressable style={styles.retakeBtn} onPress={() => setPhoto(null)} testID="photo-retake">
-                <Text style={styles.retakeText}>REMOVE PHOTO</Text>
+                <Ionicons name="trash-outline" size={16} color={theme.color.brand} />
+                <Text style={styles.retakeText}>Remove photo</Text>
               </Pressable>
             </View>
           ) : (
             <Pressable style={styles.camBtn} onPress={openCam} testID="open-camera">
-              <Ionicons name="camera" size={24} color="#000" />
-              <Text style={styles.camBtnLabel}>OPEN CAMERA</Text>
+              <View style={styles.camIconBubble}>
+                <Ionicons name="camera" size={22} color={theme.color.brand} />
+              </View>
+              <Text style={styles.camBtnLabel}>Open camera</Text>
             </Pressable>
           )}
         </View>
 
         <Pressable
           testID="submit-waste"
-          style={[styles.submit, submitting && { opacity: 0.5 }]}
+          style={[styles.submit, (submitting || !productId) && { opacity: 0.5 }]}
           onPress={submit}
           disabled={submitting || !productId}
         >
-          {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>SUBMIT TO SUPERVISOR →</Text>}
+          {submitting ? <ActivityIndicator color="#FFF" /> : (
+            <>
+              <Text style={styles.submitText}>Submit to supervisor</Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFF" />
+            </>
+          )}
         </Pressable>
-        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.color.surface },
-  header: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: theme.color.borderStrong },
-  title: { fontSize: 22, fontWeight: '900', letterSpacing: -1 },
-  label: { fontSize: 11, letterSpacing: 1.5, fontWeight: '800', color: theme.color.onSurface },
+  container: { flex: 1, backgroundColor: theme.color.surfaceSecondary },
+  header: { paddingHorizontal: 20, paddingVertical: 16, backgroundColor: theme.color.surface },
+  title: { fontFamily: theme.font.extrabold, fontSize: 22, color: theme.color.onSurface, letterSpacing: -0.4 },
+  subtitle: { fontFamily: theme.font.medium, fontSize: 12, color: theme.color.muted, marginTop: 2 },
+  label: { fontFamily: theme.font.semibold, fontSize: 12, color: theme.color.muted, letterSpacing: 0.3 },
   itemRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    padding: 14, borderWidth: 2, borderColor: theme.color.borderStrong,
+    padding: 14, borderRadius: theme.radius.xl, backgroundColor: theme.color.surface,
+    ...(theme.shadow.sm as any),
   },
-  itemRowActive: { backgroundColor: theme.color.surfaceInverse },
-  itemText: { fontSize: 15, fontWeight: '800' },
-  itemSku: { fontFamily: theme.font.mono, fontSize: 11, color: theme.color.muted, letterSpacing: 1 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: theme.color.borderStrong },
-  chipActive: { backgroundColor: theme.color.brand, borderColor: theme.color.brand },
-  chipText: { fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  qtyBox: { flexDirection: 'row', alignItems: 'center', gap: 0, borderWidth: 2, borderColor: theme.color.borderStrong, marginTop: 8, alignSelf: 'flex-start' },
-  qtyBtn: { paddingHorizontal: 20, paddingVertical: 12, backgroundColor: theme.color.surfaceSecondary },
-  qtyBtnText: { fontSize: 26, fontWeight: '900' },
-  qtyVal: { width: 60, textAlign: 'center', fontSize: 22, fontWeight: '900', fontFamily: theme.font.mono },
+  itemRowActive: { backgroundColor: theme.color.brand },
+  itemText: { fontFamily: theme.font.bold, fontSize: 15, color: theme.color.onSurface },
+  itemTextActive: { color: '#FFF' },
+  itemSku: { fontFamily: theme.font.mono, fontSize: 11, color: theme.color.muted, letterSpacing: 0.5, marginTop: 2 },
+  itemSkuActive: { color: 'rgba(255,255,255,0.8)' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.radius.pill, backgroundColor: theme.color.surface, ...(theme.shadow.sm as any) },
+  chipActive: { backgroundColor: theme.color.brand },
+  chipText: { fontFamily: theme.font.bold, fontSize: 12, color: theme.color.onSurface },
+  chipTextActive: { color: '#FFF' },
+  qtyBox: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.color.surface, borderRadius: theme.radius.pill, padding: 6, marginTop: 8, alignSelf: 'flex-start', ...(theme.shadow.sm as any) },
+  qtyBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.color.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+  qtyVal: { width: 48, textAlign: 'center', fontSize: 18, fontFamily: theme.font.extrabold, color: theme.color.onSurface },
+  photoPreview: { width: '100%', height: 200, borderRadius: theme.radius.xl },
+  retakeBtn: { marginTop: 10, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: theme.radius.pill, backgroundColor: theme.color.brandSoft },
+  retakeText: { fontFamily: theme.font.bold, fontSize: 12, color: theme.color.brand },
   camBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    marginTop: 8, padding: 16, borderWidth: 2, borderColor: theme.color.borderStrong,
-    backgroundColor: theme.color.surfaceSecondary, justifyContent: 'center',
+    marginTop: 8, padding: 14, borderRadius: theme.radius.xl,
+    backgroundColor: theme.color.surface, ...(theme.shadow.sm as any),
   },
-  camBtnLabel: { fontSize: 14, fontWeight: '900', letterSpacing: 1 },
-  retakeBtn: { marginTop: 8, padding: 12, borderWidth: 2, borderColor: theme.color.borderStrong, alignItems: 'center' },
-  retakeText: { fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  submit: { padding: 20, backgroundColor: theme.color.brand, borderWidth: 2, borderColor: theme.color.borderStrong, alignItems: 'center' },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+  camIconBubble: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.color.brandSoft, alignItems: 'center', justifyContent: 'center' },
+  camBtnLabel: { fontFamily: theme.font.bold, fontSize: 14, color: theme.color.onSurface },
+  submit: {
+    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
+    padding: 16, backgroundColor: theme.color.brand, borderRadius: theme.radius.pill,
+    ...(theme.shadow.md as any),
+  },
+  submitText: { color: '#FFF', fontFamily: theme.font.extrabold, fontSize: 15, letterSpacing: 0.2 },
   camBar: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: 40, paddingTop: 20, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-  camBtnText: { color: '#FFF', fontWeight: '900', fontSize: 14, letterSpacing: 1 },
-  camTrigger: { width: 72, height: 72, borderRadius: 0, backgroundColor: '#FFF', borderWidth: 4, borderColor: theme.color.brand },
+  camCancelBtn: { padding: 10 },
+  camBtnText: { color: '#FFF', fontFamily: theme.font.bold, fontSize: 14 },
+  camTrigger: { width: 72, height: 72, borderRadius: 36, backgroundColor: '#FFF', borderWidth: 4, borderColor: theme.color.brand },
 });

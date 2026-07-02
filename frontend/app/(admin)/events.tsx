@@ -24,11 +24,7 @@ export default function Events() {
   const load = useCallback(async () => {
     try {
       const ev = await api<any>('/events');
-      const eventList = Array.isArray(ev)
-        ? ev
-        : Array.isArray(ev?.events)
-          ? ev.events
-          : [];
+      const eventList = Array.isArray(ev) ? ev : Array.isArray(ev?.events) ? ev.events : [];
       setEvents(eventList);
     } catch (e: any) { toast.show(e.message, 'error'); }
     finally { setLoading(false); }
@@ -68,34 +64,29 @@ export default function Events() {
     finally { setBusy(false); }
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator /></View>;
+  if (loading) return <View style={styles.center}><ActivityIndicator color={theme.color.brand} /></View>;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>EVENTS</Text>
+        <Text style={styles.title}>Events</Text>
         <Pressable style={styles.addBtn} onPress={openNew} testID="new-event">
-          <Ionicons name="add" size={22} color="#FFF" />
-          <Text style={styles.addBtnText}>NEW</Text>
+          <Ionicons name="add" size={18} color="#FFF" />
+          <Text style={styles.addBtnText}>New</Text>
         </Pressable>
       </View>
-      <ScrollView contentContainerStyle={{ padding: 12, gap: 8 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
         {events.map((e) => (
-          <Pressable
-            key={e.id}
-            style={styles.card}
-            testID={`event-${e.code}`}
-            onPress={() => openEdit(e)}
-          >
+          <Pressable key={e.id} style={styles.card} testID={`event-${e.code}`} onPress={() => openEdit(e)}>
             <View style={{ flex: 1 }}>
               <Text style={styles.evName}>{e.name}</Text>
               <Text style={styles.evVenue}>{e.venue}</Text>
             </View>
             <View style={styles.codeBox}>
-              <Text style={styles.codeLabel}>CODE</Text>
+              <Text style={styles.codeLabel}>Code</Text>
               <Text style={styles.codeVal}>{e.code}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={theme.color.muted} style={{ marginLeft: 8 }} />
+            <Ionicons name="chevron-forward" size={18} color={theme.color.muted} style={{ marginLeft: 8 }} />
           </Pressable>
         ))}
       </ScrollView>
@@ -104,18 +95,31 @@ export default function Events() {
         <SafeAreaProvider>
           <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <View style={styles.header}>
-              <Text style={styles.title}>{editingId ? 'EDIT EVENT' : 'NEW EVENT'}</Text>
-              <Pressable onPress={() => setModal(false)} testID="close-modal" hitSlop={12}><Ionicons name="close" size={28} /></Pressable>
+              <Text style={styles.title}>{editingId ? 'Edit event' : 'New event'}</Text>
+              <Pressable onPress={() => setModal(false)} testID="close-modal" hitSlop={12} style={styles.closeBtn}>
+                <Ionicons name="close" size={20} color={theme.color.onSurface} />
+              </Pressable>
             </View>
             <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
-              <Text style={styles.label}>NAME</Text>
-              <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Summer Festival" testID="ev-name" />
-              <Text style={styles.label}>VENUE</Text>
-              <TextInput style={styles.input} value={venue} onChangeText={setVenue} placeholder="Dublin Arena" testID="ev-venue" />
-              <Text style={styles.label}>CODE</Text>
-              <TextInput style={styles.input} value={code} onChangeText={(v) => setCode(v.toUpperCase())} placeholder="FEST02" autoCapitalize="characters" testID="ev-code" />
+              <View>
+                <Text style={styles.label}>Name</Text>
+                <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Summer Festival" placeholderTextColor={theme.color.muted} testID="ev-name" />
+              </View>
+              <View>
+                <Text style={styles.label}>Venue</Text>
+                <TextInput style={styles.input} value={venue} onChangeText={setVenue} placeholder="Dublin Arena" placeholderTextColor={theme.color.muted} testID="ev-venue" />
+              </View>
+              <View>
+                <Text style={styles.label}>Code</Text>
+                <TextInput style={styles.input} value={code} onChangeText={(v) => setCode(v.toUpperCase())} placeholder="FEST02" placeholderTextColor={theme.color.muted} autoCapitalize="characters" testID="ev-code" />
+              </View>
               <Pressable style={styles.submit} onPress={submit} disabled={busy} testID="ev-create">
-                {busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>{editingId ? 'SAVE →' : 'CREATE →'}</Text>}
+                {busy ? <ActivityIndicator color="#FFF" /> : (
+                  <>
+                    <Text style={styles.submitText}>{editingId ? 'Save' : 'Create'}</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                  </>
+                )}
               </Pressable>
             </ScrollView>
           </SafeAreaView>
@@ -126,20 +130,21 @@ export default function Events() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.color.surface },
+  container: { flex: 1, backgroundColor: theme.color.surfaceSecondary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: theme.color.borderStrong },
-  title: { fontSize: 22, fontWeight: '900', letterSpacing: -1 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.color.brand, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 2, borderColor: theme.color.borderStrong },
-  addBtnText: { color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  card: { flexDirection: 'row', alignItems: 'center', padding: 14, borderWidth: 2, borderColor: theme.color.borderStrong },
-  evName: { fontSize: 16, fontWeight: '900' },
-  evVenue: { fontSize: 12, color: theme.color.muted, marginTop: 2 },
-  codeBox: { alignItems: 'center', padding: 8, borderWidth: 2, borderColor: theme.color.borderStrong, backgroundColor: theme.color.surfaceInverse },
-  codeLabel: { fontSize: 9, color: '#FFF', letterSpacing: 1, fontWeight: '900' },
-  codeVal: { fontSize: 16, color: '#FFF', fontFamily: theme.font.mono, fontWeight: '900' },
-  label: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  input: { borderWidth: 2, borderColor: theme.color.borderStrong, padding: 12, fontSize: 16, fontWeight: '700' },
-  submit: { marginTop: 12, padding: 18, backgroundColor: theme.color.brand, alignItems: 'center', borderWidth: 2, borderColor: theme.color.borderStrong },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: theme.color.surface },
+  title: { fontFamily: theme.font.extrabold, fontSize: 22, color: theme.color.onSurface, letterSpacing: -0.4 },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.color.brand, paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.radius.pill, ...(theme.shadow.sm as any) },
+  addBtnText: { color: '#FFF', fontSize: 13, fontFamily: theme.font.bold },
+  card: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: theme.radius.xl, backgroundColor: theme.color.surface, ...(theme.shadow.sm as any) },
+  evName: { fontFamily: theme.font.extrabold, fontSize: 16, color: theme.color.onSurface },
+  evVenue: { fontFamily: theme.font.medium, fontSize: 12, color: theme.color.muted, marginTop: 2 },
+  codeBox: { alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: theme.radius.lg, backgroundColor: theme.color.surfaceInverse },
+  codeLabel: { fontSize: 9, color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5, fontFamily: theme.font.bold },
+  codeVal: { fontSize: 14, color: '#FFF', fontFamily: theme.font.mono, fontWeight: '700' },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.color.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+  label: { fontFamily: theme.font.semibold, fontSize: 12, color: theme.color.muted, letterSpacing: 0.3, marginBottom: 6 },
+  input: { backgroundColor: theme.color.surfaceSecondary, borderRadius: theme.radius.lg, padding: 14, fontSize: 15, fontFamily: theme.font.semibold, color: theme.color.onSurface },
+  submit: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 4, padding: 16, backgroundColor: theme.color.brand, borderRadius: theme.radius.pill, ...(theme.shadow.md as any) },
+  submitText: { color: '#FFF', fontFamily: theme.font.extrabold, fontSize: 15 },
 });

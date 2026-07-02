@@ -27,16 +27,8 @@ export default function WasteValidate() {
         api<any>('/waste?status_filter=pending'),
         api<any>('/products'),
       ]);
-      const wasteList = Array.isArray(ws)
-        ? ws
-        : Array.isArray(ws?.items)
-          ? ws.items
-          : [];
-      const productList = Array.isArray(ps)
-        ? ps
-        : Array.isArray(ps?.products)
-          ? ps.products
-          : [];
+      const wasteList = Array.isArray(ws) ? ws : Array.isArray(ws?.items) ? ws.items : [];
+      const productList = Array.isArray(ps) ? ps : Array.isArray(ps?.products) ? ps.products : [];
       setItems(wasteList);
       setProducts(productList);
     } catch (e: any) {
@@ -65,18 +57,21 @@ export default function WasteValidate() {
     }
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator /></View>;
+  if (loading) return <View style={styles.center}><ActivityIndicator color={theme.color.brand} /></View>;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>WASTE VALIDATION</Text>
-        <Text style={styles.subtitle}>{items.length} PENDING</Text>
+        <Text style={styles.title}>Waste validation</Text>
+        <Text style={styles.subtitle}>{items.length} pending</Text>
       </View>
-      <ScrollView contentContainerStyle={{ padding: 12, gap: 12 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
         {items.length === 0 && (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyTitle}>NO PENDING WASTE</Text>
+            <View style={styles.emptyIcon}>
+              <Text style={{ fontSize: 32 }}>✅</Text>
+            </View>
+            <Text style={styles.emptyTitle}>No pending waste</Text>
           </View>
         )}
         {items.map((w) => (
@@ -84,36 +79,28 @@ export default function WasteValidate() {
             {w.photo_b64 && (
               <Image
                 source={{ uri: `data:image/jpeg;base64,${w.photo_b64}` }}
-                style={{ width: '100%', height: 180, marginBottom: 10 }}
+                style={styles.photo}
                 contentFit="cover"
               />
             )}
-            <View style={styles.rowH}>
-              <Text style={styles.walker}>{w.walker_name}</Text>
-              <Text style={styles.time}>{new Date(w.timestamp).toLocaleTimeString()}</Text>
-            </View>
-            <Text style={styles.item}>{productMap[w.product_id]?.name || w.product_id}</Text>
-            <View style={styles.metaRow}>
-              <View style={styles.chip}><Text style={styles.chipText}>{w.category.toUpperCase()}</Text></View>
-              <Text style={styles.qty}>× {w.quantity}</Text>
-            </View>
-            <View style={styles.actions}>
-              <Pressable
-                testID={`reject-waste-${w.id}`}
-                style={styles.rejectBtn}
-                disabled={busyId === w.id}
-                onPress={() => validate(w, false)}
-              >
-                <Text style={styles.rejectText}>REJECT</Text>
-              </Pressable>
-              <Pressable
-                testID={`approve-waste-${w.id}`}
-                style={styles.approveBtn}
-                disabled={busyId === w.id}
-                onPress={() => validate(w, true)}
-              >
-                {busyId === w.id ? <ActivityIndicator color="#FFF" /> : <Text style={styles.approveText}>APPROVE →</Text>}
-              </Pressable>
+            <View style={styles.cardBody}>
+              <View style={styles.rowH}>
+                <Text style={styles.walker}>{w.walker_name}</Text>
+                <Text style={styles.time}>{new Date(w.timestamp).toLocaleTimeString()}</Text>
+              </View>
+              <Text style={styles.item}>{productMap[w.product_id]?.name || w.product_id}</Text>
+              <View style={styles.metaRow}>
+                <View style={styles.chip}><Text style={styles.chipText}>{w.category}</Text></View>
+                <Text style={styles.qty}>× {w.quantity}</Text>
+              </View>
+              <View style={styles.actions}>
+                <Pressable testID={`reject-waste-${w.id}`} style={styles.rejectBtn} disabled={busyId === w.id} onPress={() => validate(w, false)}>
+                  <Text style={styles.rejectText}>Reject</Text>
+                </Pressable>
+                <Pressable testID={`approve-waste-${w.id}`} style={styles.approveBtn} disabled={busyId === w.id} onPress={() => validate(w, true)}>
+                  {busyId === w.id ? <ActivityIndicator color="#FFF" /> : <Text style={styles.approveText}>Approve</Text>}
+                </Pressable>
+              </View>
             </View>
           </View>
         ))}
@@ -123,25 +110,28 @@ export default function WasteValidate() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.color.surface },
+  container: { flex: 1, backgroundColor: theme.color.surfaceSecondary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: theme.color.borderStrong },
-  title: { fontSize: 22, fontWeight: '900', letterSpacing: -1 },
-  subtitle: { fontSize: 12, color: theme.color.muted, marginTop: 2, fontFamily: theme.font.mono, letterSpacing: 1 },
-  emptyBox: { padding: 40, alignItems: 'center' },
-  emptyTitle: { fontSize: 16, fontWeight: '900', letterSpacing: 1 },
-  card: { borderWidth: 2, borderColor: theme.color.borderStrong, padding: 14 },
+  header: { paddingHorizontal: 20, paddingVertical: 16, backgroundColor: theme.color.surface },
+  title: { fontFamily: theme.font.extrabold, fontSize: 22, color: theme.color.onSurface, letterSpacing: -0.4 },
+  subtitle: { fontFamily: theme.font.medium, fontSize: 12, color: theme.color.muted, marginTop: 2 },
+  emptyBox: { padding: 40, alignItems: 'center', gap: 8 },
+  emptyIcon: { width: 72, height: 72, borderRadius: 36, backgroundColor: theme.color.successSoft, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontFamily: theme.font.extrabold, fontSize: 16, color: theme.color.onSurface, marginTop: 4 },
+  card: { borderRadius: theme.radius.xl, backgroundColor: theme.color.surface, overflow: 'hidden', ...(theme.shadow.sm as any) },
+  photo: { width: '100%', height: 180 },
+  cardBody: { padding: 14, gap: 4 },
   rowH: { flexDirection: 'row', justifyContent: 'space-between' },
-  walker: { fontSize: 16, fontWeight: '900' },
-  time: { fontSize: 11, fontFamily: theme.font.mono, color: theme.color.muted, letterSpacing: 1 },
-  item: { fontSize: 15, fontWeight: '700', marginTop: 6 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8, marginBottom: 12 },
-  chip: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: theme.color.warning, borderWidth: 2, borderColor: theme.color.borderStrong },
-  chipText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-  qty: { fontSize: 18, fontWeight: '900', fontFamily: theme.font.mono },
+  walker: { fontFamily: theme.font.extrabold, fontSize: 15, color: theme.color.onSurface },
+  time: { fontFamily: theme.font.medium, fontSize: 11, color: theme.color.muted },
+  item: { fontFamily: theme.font.semibold, fontSize: 14, color: theme.color.onSurfaceSecondary, marginTop: 2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 6, marginBottom: 10 },
+  chip: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: theme.color.warningSoft, borderRadius: theme.radius.pill },
+  chipText: { fontSize: 11, fontFamily: theme.font.bold, color: '#8B6D19', textTransform: 'capitalize' },
+  qty: { fontSize: 16, fontFamily: theme.font.extrabold, color: theme.color.onSurface },
   actions: { flexDirection: 'row', gap: 8 },
-  rejectBtn: { flex: 1, borderWidth: 2, borderColor: theme.color.borderStrong, backgroundColor: theme.color.surface, paddingVertical: 14, alignItems: 'center' },
-  rejectText: { fontSize: 14, fontWeight: '900', letterSpacing: 1 },
-  approveBtn: { flex: 1, backgroundColor: theme.color.surfaceInverse, paddingVertical: 14, alignItems: 'center', borderWidth: 2, borderColor: theme.color.borderStrong },
-  approveText: { color: '#FFF', fontSize: 14, fontWeight: '900', letterSpacing: 1 },
+  rejectBtn: { flex: 1, backgroundColor: theme.color.surfaceSecondary, borderRadius: theme.radius.pill, paddingVertical: 12, alignItems: 'center' },
+  rejectText: { fontFamily: theme.font.bold, fontSize: 13, color: theme.color.onSurface },
+  approveBtn: { flex: 1, backgroundColor: theme.color.brand, borderRadius: theme.radius.pill, paddingVertical: 12, alignItems: 'center' },
+  approveText: { color: '#FFF', fontFamily: theme.font.bold, fontSize: 13 },
 });

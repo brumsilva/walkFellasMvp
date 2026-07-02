@@ -27,21 +27,13 @@ export default function Catalog() {
   const load = useCallback(async () => {
     try {
       const ev = await api<any>('/events');
-      const eventList = Array.isArray(ev)
-        ? ev
-        : Array.isArray(ev?.events)
-          ? ev.events
-          : [];
+      const eventList = Array.isArray(ev) ? ev : Array.isArray(ev?.events) ? ev.events : [];
       setEvents(eventList);
       const eid = selectedEvent || eventList[0]?.id || '';
       setSelectedEvent(eid);
       if (eid) {
         const pr = await api<any>(`/products?event_id=${eid}`);
-        const productList = Array.isArray(pr)
-          ? pr
-          : Array.isArray(pr?.products)
-            ? pr.products
-            : [];
+        const productList = Array.isArray(pr) ? pr : Array.isArray(pr?.products) ? pr.products : [];
         setProducts(productList);
       }
     } catch (e: any) { toast.show(e.message, 'error'); }
@@ -69,16 +61,10 @@ export default function Catalog() {
     setBusy(true);
     try {
       if (editingId) {
-        await api(`/products/${editingId}`, {
-          method: 'PUT',
-          body: JSON.stringify({ sku, name, price: parseFloat(price) }),
-        });
+        await api(`/products/${editingId}`, { method: 'PUT', body: JSON.stringify({ sku, name, price: parseFloat(price) }) });
         toast.show('Product updated', 'success');
       } else {
-        await api('/products', {
-          method: 'POST',
-          body: JSON.stringify({ sku, name, price: parseFloat(price), event_id: selectedEvent, category: 'other' }),
-        });
+        await api('/products', { method: 'POST', body: JSON.stringify({ sku, name, price: parseFloat(price), event_id: selectedEvent, category: 'other' }) });
         toast.show('Product added', 'success');
       }
       hap.success();
@@ -88,18 +74,18 @@ export default function Catalog() {
     finally { setBusy(false); }
   };
 
-  if (loading) return <View style={styles.center}><ActivityIndicator /></View>;
+  if (loading) return <View style={styles.center}><ActivityIndicator color={theme.color.brand} /></View>;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>CATALOG</Text>
-        <Pressable style={styles.addBtn} onPress={openNew} testID="new-product" disabled={!selectedEvent}>
-          <Ionicons name="add" size={22} color="#FFF" />
-          <Text style={styles.addBtnText}>NEW</Text>
+        <Text style={styles.title}>Catalog</Text>
+        <Pressable style={[styles.addBtn, !selectedEvent && { opacity: 0.5 }]} onPress={openNew} testID="new-product" disabled={!selectedEvent}>
+          <Ionicons name="add" size={18} color="#FFF" />
+          <Text style={styles.addBtnText}>New</Text>
         </Pressable>
       </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={{ gap: 8, paddingHorizontal: 12 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipRow} contentContainerStyle={{ gap: 8, paddingHorizontal: 20 }}>
         {events.map((e) => (
           <Pressable
             key={e.id}
@@ -111,20 +97,15 @@ export default function Catalog() {
           </Pressable>
         ))}
       </ScrollView>
-      <ScrollView contentContainerStyle={{ padding: 12, gap: 6 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
         {products.map((p) => (
-          <Pressable
-            key={p.id}
-            style={styles.row}
-            testID={`product-${p.sku}`}
-            onPress={() => openEdit(p)}
-          >
+          <Pressable key={p.id} style={styles.row} testID={`product-${p.sku}`} onPress={() => openEdit(p)}>
             <View style={{ flex: 1 }}>
               <Text style={styles.pSku}>{p.sku}</Text>
               <Text style={styles.pName}>{p.name}</Text>
             </View>
             <Text style={styles.pPrice}>€{p.price.toFixed(2)}</Text>
-            <Ionicons name="chevron-forward" size={20} color={theme.color.muted} style={{ marginLeft: 8 }} />
+            <Ionicons name="chevron-forward" size={18} color={theme.color.muted} style={{ marginLeft: 8 }} />
           </Pressable>
         ))}
       </ScrollView>
@@ -133,18 +114,31 @@ export default function Catalog() {
         <SafeAreaProvider>
           <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <View style={styles.header}>
-              <Text style={styles.title}>{editingId ? 'EDIT PRODUCT' : 'NEW PRODUCT'}</Text>
-              <Pressable onPress={() => setModal(false)} testID="close-modal" hitSlop={12}><Ionicons name="close" size={28} /></Pressable>
+              <Text style={styles.title}>{editingId ? 'Edit product' : 'New product'}</Text>
+              <Pressable onPress={() => setModal(false)} testID="close-modal" hitSlop={12} style={styles.closeBtn}>
+                <Ionicons name="close" size={20} color={theme.color.onSurface} />
+              </Pressable>
             </View>
             <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
-              <Text style={styles.label}>SKU</Text>
-              <TextInput style={styles.input} value={sku} onChangeText={(v) => setSku(v.toUpperCase())} placeholder="BEER-500" autoCapitalize="characters" testID="pr-sku" />
-              <Text style={styles.label}>NAME</Text>
-              <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Craft Lager 500ml" testID="pr-name" />
-              <Text style={styles.label}>PRICE (€)</Text>
-              <TextInput style={styles.input} value={price} onChangeText={setPrice} placeholder="6.50" keyboardType="decimal-pad" testID="pr-price" />
+              <View>
+                <Text style={styles.label}>SKU</Text>
+                <TextInput style={styles.input} value={sku} onChangeText={(v) => setSku(v.toUpperCase())} placeholder="BEER-500" placeholderTextColor={theme.color.muted} autoCapitalize="characters" testID="pr-sku" />
+              </View>
+              <View>
+                <Text style={styles.label}>Name</Text>
+                <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Craft Lager 500ml" placeholderTextColor={theme.color.muted} testID="pr-name" />
+              </View>
+              <View>
+                <Text style={styles.label}>Price (€)</Text>
+                <TextInput style={styles.input} value={price} onChangeText={setPrice} placeholder="6.50" placeholderTextColor={theme.color.muted} keyboardType="decimal-pad" testID="pr-price" />
+              </View>
               <Pressable style={styles.submit} onPress={submit} disabled={busy} testID="pr-create">
-                {busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>{editingId ? 'SAVE →' : 'ADD →'}</Text>}
+                {busy ? <ActivityIndicator color="#FFF" /> : (
+                  <>
+                    <Text style={styles.submitText}>{editingId ? 'Save' : 'Add'}</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                  </>
+                )}
               </Pressable>
             </ScrollView>
           </SafeAreaView>
@@ -155,22 +149,23 @@ export default function Catalog() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.color.surface },
+  container: { flex: 1, backgroundColor: theme.color.surfaceSecondary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: theme.color.borderStrong },
-  title: { fontSize: 22, fontWeight: '900', letterSpacing: -1 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.color.brand, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 2, borderColor: theme.color.borderStrong },
-  addBtnText: { color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  chipRow: { maxHeight: 56, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: theme.color.borderStrong },
-  chip: { flexShrink: 0, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 2, borderColor: theme.color.borderStrong, alignItems: 'center', justifyContent: 'center' },
-  chipActive: { backgroundColor: theme.color.surfaceInverse },
-  chipText: { fontSize: 12, fontWeight: '900', letterSpacing: 1, fontFamily: theme.font.mono },
-  row: { flexDirection: 'row', alignItems: 'center', padding: 12, borderWidth: 2, borderColor: theme.color.borderStrong },
-  pSku: { fontFamily: theme.font.mono, fontSize: 11, color: theme.color.muted, letterSpacing: 1, fontWeight: '800' },
-  pName: { fontSize: 15, fontWeight: '800', marginTop: 2 },
-  pPrice: { fontSize: 18, fontWeight: '900', fontFamily: theme.font.mono },
-  label: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  input: { borderWidth: 2, borderColor: theme.color.borderStrong, padding: 12, fontSize: 16, fontWeight: '700' },
-  submit: { marginTop: 12, padding: 18, backgroundColor: theme.color.brand, alignItems: 'center', borderWidth: 2, borderColor: theme.color.borderStrong },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: theme.color.surface },
+  title: { fontFamily: theme.font.extrabold, fontSize: 22, color: theme.color.onSurface, letterSpacing: -0.4 },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.color.brand, paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.radius.pill, ...(theme.shadow.sm as any) },
+  addBtnText: { color: '#FFF', fontSize: 13, fontFamily: theme.font.bold },
+  chipRow: { maxHeight: 56, paddingVertical: 10, backgroundColor: theme.color.surface },
+  chip: { flexShrink: 0, paddingHorizontal: 14, paddingVertical: 8, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+  chipActive: { backgroundColor: theme.color.brand },
+  chipText: { fontSize: 12, fontFamily: theme.font.bold, letterSpacing: 0.3, color: theme.color.onSurface },
+  row: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: theme.radius.xl, backgroundColor: theme.color.surface, ...(theme.shadow.sm as any) },
+  pSku: { fontFamily: theme.font.mono, fontSize: 11, color: theme.color.muted, letterSpacing: 0.5 },
+  pName: { fontFamily: theme.font.bold, fontSize: 15, color: theme.color.onSurface, marginTop: 2 },
+  pPrice: { fontFamily: theme.font.extrabold, fontSize: 16, color: theme.color.onSurface },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.color.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+  label: { fontFamily: theme.font.semibold, fontSize: 12, color: theme.color.muted, letterSpacing: 0.3, marginBottom: 6 },
+  input: { backgroundColor: theme.color.surfaceSecondary, borderRadius: theme.radius.lg, padding: 14, fontSize: 15, fontFamily: theme.font.semibold, color: theme.color.onSurface },
+  submit: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center', marginTop: 4, padding: 16, backgroundColor: theme.color.brand, borderRadius: theme.radius.pill, ...(theme.shadow.md as any) },
+  submitText: { color: '#FFF', fontFamily: theme.font.extrabold, fontSize: 15 },
 });

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,21 +30,9 @@ export default function Walkers() {
         api<any>('/dashboard/active-walkers'),
         api<any>('/products'),
       ]);
-      const walkerList = Array.isArray(ws)
-        ? ws
-        : Array.isArray(ws?.walkers)
-          ? ws.walkers
-          : [];
-      const activeList = Array.isArray(act)
-        ? act
-        : Array.isArray(act?.active)
-          ? act.active
-          : [];
-      const productList = Array.isArray(pr)
-        ? pr
-        : Array.isArray(pr?.products)
-          ? pr.products
-          : [];
+      const walkerList = Array.isArray(ws) ? ws : Array.isArray(ws?.walkers) ? ws.walkers : [];
+      const activeList = Array.isArray(act) ? act : Array.isArray(act?.active) ? act.active : [];
+      const productList = Array.isArray(pr) ? pr : Array.isArray(pr?.products) ? pr.products : [];
       setWalkers(walkerList);
       setActive(activeList);
       setProducts(productList);
@@ -96,35 +84,38 @@ export default function Walkers() {
 
   const activeMap = Object.fromEntries(active.map((a) => [a.walker_id, a]));
 
-  if (loading) return <View style={styles.center}><ActivityIndicator /></View>;
+  if (loading) return <View style={styles.center}><ActivityIndicator color={theme.color.brand} /></View>;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.title}>WALKERS</Text>
-        <Text style={styles.subtitle}>{active.length} ACTIVE / {walkers.length} TOTAL</Text>
+        <Text style={styles.title}>Walkers</Text>
+        <Text style={styles.subtitle}>{active.length} active / {walkers.length} total</Text>
       </View>
-      <ScrollView contentContainerStyle={{ padding: 12, gap: 8 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
         {walkers.map((w) => {
           const shift = activeMap[w.id];
           return (
             <View key={w.id} style={styles.card} testID={`walker-${w.id}`}>
+              <View style={[styles.avatar, shift && { backgroundColor: theme.color.successSoft }]}>
+                <Text style={[styles.avatarText, shift && { color: theme.color.success }]}>{w.name.slice(0, 1)}</Text>
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.wName}>{w.name}</Text>
                 {shift ? (
-                  <Text style={styles.wMonoActive}>● ACTIVE • {shift.current_units} UNITS</Text>
+                  <View style={styles.statusRow}>
+                    <View style={[styles.dot, { backgroundColor: theme.color.success }]} />
+                    <Text style={styles.wStatusActive}>Active · {shift.current_units} units</Text>
+                  </View>
                 ) : (
-                  <Text style={styles.wMono}>○ OFF SHIFT</Text>
+                  <View style={styles.statusRow}>
+                    <View style={[styles.dot, { backgroundColor: theme.color.muted }]} />
+                    <Text style={styles.wStatus}>Off shift</Text>
+                  </View>
                 )}
               </View>
-              <Pressable
-                testID={`assign-${w.id}`}
-                style={[styles.assignBtn, shift && styles.assignBtnAlt]}
-                onPress={() => openAssign(w)}
-              >
-                <Text style={[styles.assignBtnText, shift && { color: '#FFF' }]}>
-                  {shift ? 'REASSIGN' : 'ASSIGN BAG'}
-                </Text>
+              <Pressable testID={`assign-${w.id}`} style={[styles.assignBtn, shift && styles.assignBtnAlt]} onPress={() => openAssign(w)}>
+                <Text style={[styles.assignBtnText, shift && { color: '#FFF' }]}>{shift ? 'Reassign' : 'Assign bag'}</Text>
               </Pressable>
             </View>
           );
@@ -134,37 +125,44 @@ export default function Walkers() {
       <Modal visible={showAssign} animationType="slide" onRequestClose={() => setShowAssign(false)}>
         <SafeAreaProvider>
           <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-          <View style={styles.header}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>ASSIGN BAG</Text>
-              <Text style={styles.subtitle}>{selectedWalker?.name}</Text>
-            </View>
-            <Pressable onPress={() => setShowAssign(false)} testID="close-assign"><Ionicons name="close" size={28} /></Pressable>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 12, gap: 6 }}>
-            {products.map((p) => (
-              <View key={p.id} style={styles.itemRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.itemName}>{p.name}</Text>
-                  <Text style={styles.itemSku}>{p.sku}</Text>
-                </View>
-                <View style={styles.stepper}>
-                  <Pressable style={styles.stepBtn} onPress={() => bump(p.id, -1)} testID={`bag-${p.sku}-minus`}>
-                    <Text style={styles.stepBtnText}>−</Text>
-                  </Pressable>
-                  <Text style={styles.stepVal}>{bagQty[p.id] || 0}</Text>
-                  <Pressable style={styles.stepBtn} onPress={() => bump(p.id, +1)} testID={`bag-${p.sku}-plus`}>
-                    <Text style={styles.stepBtnText}>+</Text>
-                  </Pressable>
-                </View>
+            <View style={styles.header}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>Assign bag</Text>
+                <Text style={styles.subtitle}>{selectedWalker?.name}</Text>
               </View>
-            ))}
-            <Pressable testID="confirm-bag" style={[styles.submit, busy && { opacity: 0.5 }]} onPress={assignBag} disabled={busy}>
-              {busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>ASSIGN BAG →</Text>}
-            </Pressable>
-            <View style={{ height: 40 }} />
-          </ScrollView>
-        </SafeAreaView>
+              <Pressable onPress={() => setShowAssign(false)} testID="close-assign" hitSlop={12} style={styles.closeBtn}>
+                <Ionicons name="close" size={22} color={theme.color.onSurface} />
+              </Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
+              {products.map((p) => (
+                <View key={p.id} style={styles.itemRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.itemName}>{p.name}</Text>
+                    <Text style={styles.itemSku}>{p.sku}</Text>
+                  </View>
+                  <View style={styles.stepper}>
+                    <Pressable style={styles.stepBtn} onPress={() => bump(p.id, -1)} testID={`bag-${p.sku}-minus`}>
+                      <Ionicons name="remove" size={16} color={theme.color.onSurface} />
+                    </Pressable>
+                    <Text style={styles.stepVal}>{bagQty[p.id] || 0}</Text>
+                    <Pressable style={styles.stepBtn} onPress={() => bump(p.id, +1)} testID={`bag-${p.sku}-plus`}>
+                      <Ionicons name="add" size={16} color={theme.color.onSurface} />
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+              <Pressable testID="confirm-bag" style={[styles.submit, busy && { opacity: 0.5 }]} onPress={assignBag} disabled={busy}>
+                {busy ? <ActivityIndicator color="#FFF" /> : (
+                  <>
+                    <Text style={styles.submitText}>Assign bag</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                  </>
+                )}
+              </Pressable>
+              <View style={{ height: 40 }} />
+            </ScrollView>
+          </SafeAreaView>
         </SafeAreaProvider>
       </Modal>
     </SafeAreaView>
@@ -172,25 +170,33 @@ export default function Walkers() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.color.surface },
+  container: { flex: 1, backgroundColor: theme.color.surfaceSecondary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: theme.color.borderStrong },
-  title: { fontSize: 22, fontWeight: '900', letterSpacing: -1 },
-  subtitle: { fontSize: 12, color: theme.color.muted, marginTop: 2, fontFamily: theme.font.mono, letterSpacing: 1 },
-  card: { flexDirection: 'row', alignItems: 'center', padding: 14, borderWidth: 2, borderColor: theme.color.borderStrong },
-  wName: { fontSize: 16, fontWeight: '800' },
-  wMono: { fontSize: 11, color: theme.color.muted, fontFamily: theme.font.mono, marginTop: 4, letterSpacing: 1 },
-  wMonoActive: { fontSize: 11, color: theme.color.success, fontFamily: theme.font.mono, marginTop: 4, letterSpacing: 1, fontWeight: '900' },
-  assignBtn: { borderWidth: 2, borderColor: theme.color.borderStrong, paddingHorizontal: 14, paddingVertical: 10 },
-  assignBtnAlt: { backgroundColor: theme.color.surfaceInverse },
-  assignBtnText: { fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  itemRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderWidth: 2, borderColor: theme.color.borderStrong },
-  itemName: { fontSize: 15, fontWeight: '800' },
-  itemSku: { fontSize: 11, color: theme.color.muted, fontFamily: theme.font.mono, letterSpacing: 1 },
-  stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: theme.color.borderStrong },
-  stepBtn: { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: theme.color.surfaceSecondary },
-  stepBtnText: { fontSize: 20, fontWeight: '900' },
-  stepVal: { width: 44, textAlign: 'center', fontSize: 16, fontWeight: '900', fontFamily: theme.font.mono },
-  submit: { padding: 20, backgroundColor: theme.color.brand, borderWidth: 2, borderColor: theme.color.borderStrong, alignItems: 'center', marginTop: 12 },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, backgroundColor: theme.color.surface },
+  title: { fontFamily: theme.font.extrabold, fontSize: 22, color: theme.color.onSurface, letterSpacing: -0.4 },
+  subtitle: { fontFamily: theme.font.medium, fontSize: 12, color: theme.color.muted, marginTop: 2 },
+  closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.color.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: theme.radius.xl, backgroundColor: theme.color.surface, ...(theme.shadow.sm as any) },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: theme.color.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontFamily: theme.font.extrabold, fontSize: 16, color: theme.color.muted },
+  wName: { fontFamily: theme.font.bold, fontSize: 15, color: theme.color.onSurface },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  dot: { width: 7, height: 7, borderRadius: 3.5 },
+  wStatus: { fontSize: 11, color: theme.color.muted, fontFamily: theme.font.medium },
+  wStatusActive: { fontSize: 11, color: theme.color.success, fontFamily: theme.font.bold },
+  assignBtn: { backgroundColor: theme.color.surfaceSecondary, paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.radius.pill },
+  assignBtnAlt: { backgroundColor: theme.color.brand },
+  assignBtnText: { fontSize: 12, fontFamily: theme.font.bold, color: theme.color.onSurface },
+  itemRow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: theme.radius.xl, backgroundColor: theme.color.surface, ...(theme.shadow.sm as any) },
+  itemName: { fontFamily: theme.font.bold, fontSize: 15, color: theme.color.onSurface },
+  itemSku: { fontSize: 11, color: theme.color.muted, fontFamily: theme.font.mono, letterSpacing: 0.5 },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: theme.color.surfaceSecondary, borderRadius: theme.radius.pill, padding: 4 },
+  stepBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.color.surface, alignItems: 'center', justifyContent: 'center', ...(theme.shadow.sm as any) },
+  stepVal: { width: 36, textAlign: 'center', fontSize: 15, fontFamily: theme.font.extrabold, color: theme.color.onSurface },
+  submit: {
+    flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'center',
+    padding: 16, backgroundColor: theme.color.brand, borderRadius: theme.radius.pill,
+    marginTop: 8, ...(theme.shadow.md as any),
+  },
+  submitText: { color: '#FFF', fontFamily: theme.font.extrabold, fontSize: 15 },
 });

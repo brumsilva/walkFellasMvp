@@ -28,7 +28,7 @@ export default function WalkerProfile() {
     hap.medium();
     setOffline(v);
     setForceOffline(v);
-    toast.show(v ? 'OFFLINE mode ON (demo)' : 'OFFLINE mode OFF', 'info');
+    toast.show(v ? 'Offline mode ON (demo)' : 'Offline mode OFF', 'info');
   };
 
   const syncNow = async () => {
@@ -44,22 +44,25 @@ export default function WalkerProfile() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}><Text style={styles.title}>PROFILE</Text></View>
+      <View style={styles.header}>
+        <Text style={styles.title}>Profile</Text>
+      </View>
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        <View style={styles.info}>
-          <Text style={styles.label}>NAME</Text>
-          <Text style={styles.value}>{user?.name}</Text>
-        </View>
-        <View style={styles.info}>
-          <Text style={styles.label}>ROLE</Text>
-          <Text style={styles.value}>{user?.role?.toUpperCase()}</Text>
+        <View style={styles.profileCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{(user?.name || '?').slice(0, 1)}</Text>
+          </View>
+          <View>
+            <Text style={styles.pName}>{user?.name}</Text>
+            <Text style={styles.pRole}>{user?.role?.toUpperCase()}</Text>
+          </View>
         </View>
 
-        <Text style={styles.sectionLabel}>SYNC</Text>
-        <View style={styles.info}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
-              <Text style={styles.value}>DEMO OFFLINE MODE</Text>
+        <Text style={styles.sectionLabel}>Sync</Text>
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.value}>Demo offline mode</Text>
               <Text style={styles.sub}>Toggle to queue actions locally</Text>
             </View>
             <Switch
@@ -71,21 +74,21 @@ export default function WalkerProfile() {
             />
           </View>
         </View>
-        <View style={styles.info}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
-              <Text style={styles.value}>PENDING SYNC</Text>
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.value}>Pending sync</Text>
               <Text style={styles.sub}>{count} item(s) waiting to send</Text>
             </View>
             <Pressable style={styles.syncBtn} onPress={syncNow} disabled={syncing || offline} testID="sync-now">
-              {syncing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.syncBtnText}>SYNC NOW</Text>}
+              {syncing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.syncBtnText}>Sync now</Text>}
             </Pressable>
           </View>
         </View>
 
         <Pressable style={styles.logoutBtn} onPress={logout} testID="logout-btn">
-          <Ionicons name="log-out-outline" size={22} color="#FFF" />
-          <Text style={styles.logoutText}>LOG OUT</Text>
+          <Ionicons name="log-out-outline" size={20} color="#FFF" />
+          <Text style={styles.logoutText}>Log out</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -93,16 +96,21 @@ export default function WalkerProfile() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.color.surface },
-  header: { paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 2, borderBottomColor: theme.color.borderStrong },
-  title: { fontSize: 22, fontWeight: '900', letterSpacing: -1 },
-  info: { padding: 14, borderWidth: 2, borderColor: theme.color.borderStrong },
-  label: { fontSize: 11, fontWeight: '800', letterSpacing: 1, color: theme.color.muted },
-  value: { fontSize: 16, fontWeight: '800', marginTop: 4 },
-  sub: { fontSize: 11, color: theme.color.muted, marginTop: 2, letterSpacing: 0.5 },
-  sectionLabel: { fontSize: 11, fontWeight: '900', letterSpacing: 2, color: theme.color.muted, marginTop: 8 },
-  syncBtn: { backgroundColor: theme.color.surfaceInverse, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 2, borderColor: theme.color.borderStrong },
-  syncBtnText: { color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, backgroundColor: theme.color.brand, paddingVertical: 16, borderWidth: 2, borderColor: theme.color.borderStrong },
-  logoutText: { color: '#FFF', fontSize: 14, fontWeight: '900', letterSpacing: 1 },
+  container: { flex: 1, backgroundColor: theme.color.surfaceSecondary },
+  header: { paddingHorizontal: 20, paddingVertical: 16, backgroundColor: theme.color.surface },
+  title: { fontFamily: theme.font.extrabold, fontSize: 22, color: theme.color.onSurface, letterSpacing: -0.4 },
+  profileCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: theme.color.surface, borderRadius: theme.radius.xl, padding: 16, ...(theme.shadow.sm as any) },
+  avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: theme.color.brand, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#FFF', fontFamily: theme.font.extrabold, fontSize: 22 },
+  pName: { fontFamily: theme.font.extrabold, fontSize: 17, color: theme.color.onSurface },
+  pRole: { fontFamily: theme.font.semibold, fontSize: 11, color: theme.color.muted, letterSpacing: 0.5, marginTop: 2 },
+  sectionLabel: { fontFamily: theme.font.bold, fontSize: 12, letterSpacing: 0.5, color: theme.color.muted, marginTop: 6 },
+  card: { padding: 14, borderRadius: theme.radius.xl, backgroundColor: theme.color.surface, ...(theme.shadow.sm as any) },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  value: { fontFamily: theme.font.bold, fontSize: 14, color: theme.color.onSurface },
+  sub: { fontFamily: theme.font.medium, fontSize: 11, color: theme.color.muted, marginTop: 2 },
+  syncBtn: { backgroundColor: theme.color.surfaceInverse, paddingHorizontal: 16, paddingVertical: 10, borderRadius: theme.radius.pill },
+  syncBtnText: { color: '#FFF', fontFamily: theme.font.bold, fontSize: 12 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, backgroundColor: theme.color.brand, paddingVertical: 16, borderRadius: theme.radius.pill, ...(theme.shadow.md as any) },
+  logoutText: { color: '#FFF', fontFamily: theme.font.extrabold, fontSize: 14 },
 });
