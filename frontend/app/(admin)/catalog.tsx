@@ -26,13 +26,23 @@ export default function Catalog() {
 
   const load = useCallback(async () => {
     try {
-      const ev = await api<EventItem[]>('/events');
-      setEvents(ev);
-      const eid = selectedEvent || ev[0]?.id || '';
+      const ev = await api<any>('/events');
+      const eventList = Array.isArray(ev)
+        ? ev
+        : Array.isArray(ev?.events)
+          ? ev.events
+          : [];
+      setEvents(eventList);
+      const eid = selectedEvent || eventList[0]?.id || '';
       setSelectedEvent(eid);
       if (eid) {
-        const pr = await api<Product[]>(`/products?event_id=${eid}`);
-        setProducts(pr);
+        const pr = await api<any>(`/products?event_id=${eid}`);
+        const productList = Array.isArray(pr)
+          ? pr
+          : Array.isArray(pr?.products)
+            ? pr.products
+            : [];
+        setProducts(productList);
       }
     } catch (e: any) { toast.show(e.message, 'error'); }
     finally { setLoading(false); }

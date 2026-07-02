@@ -35,8 +35,13 @@ export default function Waste() {
 
   const load = useCallback(async () => {
     try {
-      const prods = await api<Product[]>('/products');
-      setProducts(prods);
+      const prods = await api<any>('/products');
+      const productList = Array.isArray(prods)
+        ? prods
+        : Array.isArray(prods?.products)
+          ? prods.products
+          : [];
+      setProducts(productList);
     } catch (e: any) {
       toast.show(e.message || 'Load failed', 'error');
     }

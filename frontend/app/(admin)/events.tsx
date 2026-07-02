@@ -23,8 +23,13 @@ export default function Events() {
 
   const load = useCallback(async () => {
     try {
-      const ev = await api<EventItem[]>('/events');
-      setEvents(ev);
+      const ev = await api<any>('/events');
+      const eventList = Array.isArray(ev)
+        ? ev
+        : Array.isArray(ev?.events)
+          ? ev.events
+          : [];
+      setEvents(eventList);
     } catch (e: any) { toast.show(e.message, 'error'); }
     finally { setLoading(false); }
   }, [toast]);

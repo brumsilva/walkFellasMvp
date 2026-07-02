@@ -23,9 +23,14 @@ export default function CloseShift() {
     try {
       const [sh, prods] = await Promise.all([
         api<any>('/shifts/current'),
-        api<Product[]>('/products'),
+        api<any>('/products'),
       ]);
-      setProducts(prods);
+      const productList = Array.isArray(prods)
+        ? prods
+        : Array.isArray(prods?.products)
+          ? prods.products
+          : [];
+      setProducts(productList);
       setStock(sh.stock || {});
       setResult(null);
       // Prefill physical with expected as starting point

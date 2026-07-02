@@ -24,11 +24,21 @@ export default function WasteValidate() {
   const load = useCallback(async () => {
     try {
       const [ws, ps] = await Promise.all([
-        api<WasteLog[]>('/waste?status_filter=pending'),
-        api<Product[]>('/products'),
+        api<any>('/waste?status_filter=pending'),
+        api<any>('/products'),
       ]);
-      setItems(ws);
-      setProducts(ps);
+      const wasteList = Array.isArray(ws)
+        ? ws
+        : Array.isArray(ws?.items)
+          ? ws.items
+          : [];
+      const productList = Array.isArray(ps)
+        ? ps
+        : Array.isArray(ps?.products)
+          ? ps.products
+          : [];
+      setItems(wasteList);
+      setProducts(productList);
     } catch (e: any) {
       toast.show(e.message || 'Load failed', 'error');
     } finally {

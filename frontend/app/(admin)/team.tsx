@@ -26,12 +26,22 @@ export default function Team() {
   const load = useCallback(async () => {
     try {
       const [ws, ev] = await Promise.all([
-        api<any[]>('/walkers'),
-        api<any[]>('/events'),
+        api<any>('/walkers'),
+        api<any>('/events'),
       ]);
-      setWalkers(ws);
-      setEvents(ev);
-      if (ev.length && !eventId) setEventId(ev[0].id);
+      const walkerList = Array.isArray(ws)
+        ? ws
+        : Array.isArray(ws?.walkers)
+          ? ws.walkers
+          : [];
+      const eventList = Array.isArray(ev)
+        ? ev
+        : Array.isArray(ev?.events)
+          ? ev.events
+          : [];
+      setWalkers(walkerList);
+      setEvents(eventList);
+      if (eventList.length && !eventId) setEventId(eventList[0].id);
     } catch (e: any) { toast.show(e.message, 'error'); }
     finally { setLoading(false); }
   }, [eventId, toast]);

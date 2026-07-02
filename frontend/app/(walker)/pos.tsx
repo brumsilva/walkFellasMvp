@@ -24,6 +24,7 @@ export default function POS() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [terminalWait, setTerminalWait] = useState(false);
+  const safeProducts = Array.isArray(products) ? products : [];
 
   const load = useCallback(async () => {
     try {
@@ -31,11 +32,16 @@ export default function POS() {
       setUser(u);
       const [sh, prods] = await Promise.all([
         api<any>('/shifts/current'),
-        api<Product[]>('/products'),
+        api<any>('/products'),
       ]);
+      const productList = Array.isArray(prods)
+        ? prods
+        : Array.isArray(prods?.products)
+          ? prods.products
+          : [];
       setShift(sh.shift);
       setStock(sh.stock || {});
-      setProducts(prods);
+      setProducts(productList);
     } catch (e: any) {
       toast.show(e.message || 'Load failed', 'error');
     } finally {
@@ -63,7 +69,7 @@ export default function POS() {
   };
 
   const cartCount = Object.values(cart).reduce((a, b) => a + b, 0);
-  const cartTotal = products.reduce((acc, p) => acc + (cart[p.id] || 0) * p.price, 0);
+  const cartTotal = safeProducts.reduce((acc, p) => acc + (cart[p.id] || 0) * p.price, 0);
 
   const confirmSale = async () => {
     if (!cartCount) return;
@@ -163,7 +169,7 @@ export default function POS() {
       </View>
 
       <ScrollView contentContainerStyle={styles.grid}>
-        {products.map((p) => {
+        {safeProducts.map((p) => {
           const inCart = cart[p.id] || 0;
           const remaining = (stock[p.id] || 0) - inCart;
           return (

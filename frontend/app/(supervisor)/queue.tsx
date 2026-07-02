@@ -23,13 +23,28 @@ export default function Queue() {
   const load = useCallback(async () => {
     try {
       const [rs, sh, pr] = await Promise.all([
-        api<Restock[]>('/restocks?status_filter=pending'),
-        api<any[]>('/shifts?status_filter=closed_pending_review'),
-        api<Product[]>('/products'),
+        api<any>('/restocks?status_filter=pending'),
+        api<any>('/shifts?status_filter=closed_pending_review'),
+        api<any>('/products'),
       ]);
-      setRestocks(rs);
-      setShifts(sh);
-      setProducts(pr);
+      const restockList = Array.isArray(rs)
+        ? rs
+        : Array.isArray(rs?.restocks)
+          ? rs.restocks
+          : [];
+      const shiftList = Array.isArray(sh)
+        ? sh
+        : Array.isArray(sh?.shifts)
+          ? sh.shifts
+          : [];
+      const productList = Array.isArray(pr)
+        ? pr
+        : Array.isArray(pr?.products)
+          ? pr.products
+          : [];
+      setRestocks(restockList);
+      setShifts(shiftList);
+      setProducts(productList);
     } catch (e: any) {
       toast.show(e.message || 'Load failed', 'error');
     } finally {
