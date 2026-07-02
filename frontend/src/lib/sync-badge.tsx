@@ -16,19 +16,25 @@ export function SyncBadge({ onPress }: { onPress?: () => void }) {
     return () => { unsub(); clearInterval(t); };
   }, []);
 
-  const label = offline ? 'OFFLINE' : count > 0 ? `SYNCING (${count})` : 'ONLINE';
-  const dotColor = offline ? theme.color.error : count > 0 ? theme.color.warning : theme.color.success;
+  const label = offline ? 'Offline' : count > 0 ? `Sync ${count}` : 'Live';
+  const bg = offline ? theme.color.brandSoft : count > 0 ? theme.color.warningSoft : theme.color.successSoft;
+  const fg = offline ? theme.color.brand : count > 0 ? '#8B6D19' : theme.color.success;
+  const dot = offline ? theme.color.brand : count > 0 ? theme.color.warning : theme.color.success;
 
   return (
-    <Pressable style={styles.wrap} onPress={onPress} testID="sync-badge">
-      <View style={[styles.dot, { backgroundColor: dotColor }]} />
-      <Text style={styles.text}>{label}</Text>
+    <Pressable style={[styles.wrap, { backgroundColor: bg }]} onPress={onPress} testID="sync-badge">
+      <View style={[styles.dot, { backgroundColor: dot }]} />
+      <Text style={[styles.text, { color: fg }]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 10, height: 10, borderWidth: 1, borderColor: theme.color.borderStrong },
-  text: { fontFamily: theme.font.mono, fontSize: 11, letterSpacing: 1, fontWeight: '900' },
+  wrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: theme.radius.pill,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  text: { fontFamily: theme.font.bold, fontSize: 11, letterSpacing: 0.3 },
 });
