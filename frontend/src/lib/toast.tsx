@@ -19,7 +19,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ show }}>
       {children}
-      <View style={styles.wrap} pointerEvents="none">
+      <View style={styles.wrap}>
         {toasts.map((t) => (
           <View
             key={t.id}
@@ -49,6 +49,7 @@ const styles = StyleSheet.create({
     right: 16,
     gap: 8,
     zIndex: 9999,
+    pointerEvents: 'none',
   },
   toast: {
     borderWidth: 2,
