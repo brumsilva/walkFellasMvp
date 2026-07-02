@@ -6,6 +6,7 @@ import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { api } from '@/src/lib/api';
+import { mutate } from '@/src/lib/outbox';
 import { theme } from '@/src/lib/theme';
 import { hap } from '@/src/lib/haptics';
 import { useToast } from '@/src/lib/toast';
@@ -77,17 +78,14 @@ export default function Waste() {
     }
     setSubmitting(true);
     try {
-      await api('/waste', {
-        method: 'POST',
-        body: JSON.stringify({
-          product_id: productId,
-          quantity,
-          category,
-          photo_b64: photo || null,
-        }),
-      });
-      hap.success();
-      toast.show('Waste logged. Awaiting supervisor validation.', 'success');
+      const r = await mutate('/waste', {
+        product_id: productId,
+        quantity,
+        category,
+        photo_b64: photo || null,
+      }, { label: `Waste ${quantity} unit(s)` });
+      if (r.online) { hap.success(); toast.show('Waste logged. Awaiting supervisor.', 'success'); }
+      else { hap.warning(); toast.show('Offline — waste queued', 'info'); }
       setProductId(null);
       setQuantity(1);
       setPhoto(null);

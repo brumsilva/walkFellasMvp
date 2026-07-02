@@ -207,3 +207,67 @@ class TestE2E:
                   "total_discrepancy", "active_shifts", "pending_restocks", "pending_waste"]:
             assert k in d
         assert d["total_sales"] > 0
+
+
+# ---------- Terminal webhook + suggestions ----------
+class TestTerminalAndSuggestions:
+    @pytest.fixture(scope="class")
+    def open_shift_ctx(self, sup_token):
+        """Assign a fresh bag to Jake Miller with 20 units of first product, log in as Jake."""
+        walkers = _get("/walkers", token=sup_token).json()
+        walker = next(w for w in walkers if w["name"] == "Jake Miller")
+        products = _get("/products", token=sup_token, params={"event_id": walker["event_id"]}).json()
+        p1 = products[0]
+        p2 = products[1]
+        assign = _post(
+            "/shifts/assign-bag",
+            {"walker_id": walker["id"], "items": [
+                {"product_id": p1["id"], "quantity": 20},
+                {"product_id": p2["id"], "quantity": 10},
+            ]},
+            token=sup_token,
+        )
+        assert assign.status_code == 200, assign.text
+        w_login = _post("/auth/walker/login", {"event_code": "FEST01", "pin": "1234"})
+        return {"walker": walker, "token": w_login.json()["access_token"], "p1": p1, "p2": p2}
+
+    def test_terminal_webhook_requires_signature(self, open_shift_ctx):
+        r = requests.post(
+            f"{API}/payments/terminal-webhook",
+            json={"transaction_id": "TX-NOSIG-1", "walker_id": open_shift_ctx["walker"]["id"],
+                  "items": [{"product_id": open_shift_ctx["p1"]["id"], "quantity": 1}], "amount": 6.5},
+            timeout=30,
+        )
+        assert r.status_code == 401
+
+    def test_terminal_simulate_creates_sale(self, open_shift_ctx):
+        r = _post(
+            "/payments/simulate-terminal",
+            {"items": [{"product_id": open_shift_ctx["p1"]["id"], "quantity": 3}], "amount": 19.5},
+            token=open_shift_ctx["token"],
+        )
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["ok"] is True
+        assert d["duplicate"] is False
+        assert d["sale"]["payment_method"] == "terminal"
+        assert d["sale"]["total"] == 19.5
+        assert d["sale"]["terminal_transaction_id"].startswith("SIM-")
+
+    def test_restock_suggestions_reflect_sales(self, open_shift_ctx):
+        r = _get("/restocks/suggestions", token=open_shift_ctx["token"])
+        assert r.status_code == 200, r.text
+        d = r.json()
+        assert d["shift_id"] is not None
+        # p1 should show a positive suggested_qty because we sold 3 units in <15min window
+        s = next(x for x in d["suggestions"] if x["product_id"] == open_shift_ctx["p1"]["id"])
+        assert s["sold_last_window"] >= 3
+        assert s["suggested_qty"] > 0
+
+    def test_terminal_insufficient_stock(self, open_shift_ctx):
+        r = _post(
+            "/payments/simulate-terminal",
+            {"items": [{"product_id": open_shift_ctx["p1"]["id"], "quantity": 9999}], "amount": 100.0},
+            token=open_shift_ctx["token"],
+        )
+        assert r.status_code == 400

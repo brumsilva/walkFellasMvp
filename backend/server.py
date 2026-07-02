@@ -24,6 +24,7 @@ DB_NAME = os.environ.get("DB_NAME", "walkfellas")
 JWT_SECRET = os.environ.get("JWT_SECRET", "walkfellas-dev-secret-CHANGE-ME-in-prod")
 JWT_ALGO = "HS256"
 ACCESS_MIN = 12 * 60  # 12 hours (event-length shifts)
+TERMINAL_SECRET = os.environ.get("TERMINAL_WEBHOOK_SECRET", "walkfellas-terminal-demo-secret")
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -507,6 +508,152 @@ async def approve_restock(restock_id: str, body: RestockApprove, user=Depends(re
 async def reject_restock(restock_id: str, user=Depends(require_roles("supervisor", "admin"))):
     await db.restocks.update_one({"id": restock_id}, {"$set": {"status": "rejected", "delivered_by": user["id"], "delivered_at": now_utc().isoformat()}})
     return {"ok": True}
+
+
+# ---------- Restock auto-suggestions (business enhancement) ----------
+@api.get("/restocks/suggestions")
+async def restock_suggestions(user=Depends(require_roles("walker"))):
+    """Suggest restock quantities based on recent sales pace.
+
+    Formula:
+      rate_per_min = units_sold_in_last_15min / minutes_elapsed
+      target_next_30min = ceil(rate_per_min * 30)
+      suggestion = max(0, target_next_30min - current_stock)
+    """
+    from math import ceil
+    shift = await db.shifts.find_one({"walker_id": user["id"], "status": "open"})
+    if not shift:
+        return {"shift_id": None, "suggestions": []}
+
+    shift_id = shift["id"]
+    opened_at = datetime.fromisoformat(shift["opened_at"])
+    now = now_utc()
+    total_minutes = max(1, int((now - opened_at).total_seconds() / 60))
+    window_minutes = min(15, total_minutes)
+    window_start = (now - timedelta(minutes=window_minutes)).isoformat()
+
+    # Current stock per product
+    stock = await shift_stock_map(shift_id)
+
+    # Sales in the window (movements with type=sale)
+    window_sales: dict = {}
+    async for m in db.movements.find({
+        "shift_id": shift_id,
+        "type": "sale",
+        "timestamp": {"$gte": window_start},
+    }):
+        pid = m["product_id"]
+        window_sales[pid] = window_sales.get(pid, 0) + int(m["quantity"])
+
+    products = {p["id"]: p async for p in db.products.find({"event_id": user["event_id"]})}
+    suggestions = []
+    for pid, prod in products.items():
+        sold = window_sales.get(pid, 0)
+        rate_per_min = sold / window_minutes if window_minutes > 0 else 0
+        target = ceil(rate_per_min * 30)
+        current = int(stock.get(pid, 0))
+        suggested = max(0, target - current)
+        suggestions.append({
+            "product_id": pid,
+            "sku": prod["sku"],
+            "name": prod["name"],
+            "current_stock": current,
+            "sold_last_window": sold,
+            "window_minutes": window_minutes,
+            "rate_per_min": round(rate_per_min, 2),
+            "suggested_qty": suggested,
+        })
+    # Sort: highest suggestion first
+    suggestions.sort(key=lambda s: (-s["suggested_qty"], s["sku"]))
+    return {"shift_id": shift_id, "window_minutes": window_minutes, "suggestions": suggestions}
+
+
+# ---------- Payment terminal webhook (Phase 3 — simulated) ----------
+class TerminalWebhook(BaseModel):
+    transaction_id: str
+    walker_id: str
+    items: List[SaleItem]
+    amount: float
+    timestamp: Optional[str] = None
+    terminal_id: Optional[str] = "TERMINAL-01"
+
+
+from fastapi import Header
+
+
+@api.post("/payments/terminal-webhook")
+async def terminal_webhook(
+    body: TerminalWebhook,
+    x_terminal_signature: str = Header(default=""),
+):
+    """External payment terminal callback.
+
+    Auth: shared secret in `X-Terminal-Signature` header.
+    Idempotent by `transaction_id`. Auto-deducts stock via ledger.
+    """
+    if x_terminal_signature != TERMINAL_SECRET:
+        raise HTTPException(401, "Invalid terminal signature")
+
+    existing = await db.sales.find_one({"terminal_transaction_id": body.transaction_id}, {"_id": 0})
+    if existing:
+        return {"ok": True, "duplicate": True, "sale": existing}
+
+    walker = await db.users.find_one({"id": body.walker_id, "role": "walker", "status": "active"})
+    if not walker:
+        raise HTTPException(404, "Walker not found")
+
+    shift = await db.shifts.find_one({"walker_id": body.walker_id, "status": "open"})
+    if not shift:
+        raise HTTPException(400, "Walker has no open shift")
+
+    stock = await shift_stock_map(shift["id"])
+    for it in body.items:
+        if stock.get(it.product_id, 0) < it.quantity:
+            raise HTTPException(400, f"Insufficient stock for {it.product_id}")
+
+    sale = {
+        "id": new_id(),
+        "shift_id": shift["id"],
+        "walker_id": body.walker_id,
+        "event_id": walker["event_id"],
+        "payment_method": "terminal",
+        "terminal_id": body.terminal_id,
+        "terminal_transaction_id": body.transaction_id,
+        "items": [it.dict() for it in body.items],
+        "total": round(body.amount, 2),
+        "timestamp": body.timestamp or now_utc().isoformat(),
+    }
+    for it in body.items:
+        await record_movement(shift["id"], it.product_id, it.quantity, "sale", "terminal", sale["id"])
+    await db.sales.insert_one(sale)
+    sale.pop("_id", None)
+    return {"ok": True, "duplicate": False, "sale": sale}
+
+
+class TerminalSimReq(BaseModel):
+    items: List[SaleItem]
+    amount: float
+
+
+@api.post("/payments/simulate-terminal")
+async def simulate_terminal(body: TerminalSimReq, user=Depends(require_roles("walker"))):
+    """Demo helper: walker's device simulates the terminal firing the webhook.
+
+    In production, a real card terminal would POST to /payments/terminal-webhook
+    directly with the shared secret. This endpoint lets the app demonstrate the
+    same flow end-to-end without hardware.
+    """
+    transaction_id = f"SIM-{new_id()[:8].upper()}"
+    body_dict = TerminalWebhook(
+        transaction_id=transaction_id,
+        walker_id=user["id"],
+        items=body.items,
+        amount=body.amount,
+        timestamp=now_utc().isoformat(),
+        terminal_id="SIM-TERMINAL",
+    )
+    # Invoke internally (bypass network) with correct signature
+    return await terminal_webhook(body_dict, x_terminal_signature=TERMINAL_SECRET)
 
 
 # ---------- Close shift + reconciliation ----------

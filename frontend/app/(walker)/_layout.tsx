@@ -48,6 +48,13 @@ export default function WalkerLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'PROFILE',
+          tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

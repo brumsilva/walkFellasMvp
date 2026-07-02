@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api, clearSession, getUser } from '@/src/lib/api';
+import { mutate, drain } from '@/src/lib/outbox';
+import { SyncBadge } from '@/src/lib/sync-badge';
 import { theme } from '@/src/lib/theme';
 import { hap } from '@/src/lib/haptics';
 import { useToast } from '@/src/lib/toast';
@@ -21,6 +23,7 @@ export default function POS() {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [terminalWait, setTerminalWait] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -40,16 +43,12 @@ export default function POS() {
     }
   }, [toast]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); drain(); }, [load]));
 
   const addToCart = (p: Product) => {
     const current = cart[p.id] || 0;
     const available = (stock[p.id] || 0) - current;
-    if (available <= 0) {
-      hap.warning();
-      toast.show('Out of stock', 'error');
-      return;
-    }
+    if (available <= 0) { hap.warning(); toast.show('Out of stock', 'error'); return; }
     hap.heavy();
     setCart({ ...cart, [p.id]: current + 1 });
   };
@@ -71,9 +70,16 @@ export default function POS() {
     setSubmitting(true);
     try {
       const items = Object.entries(cart).map(([product_id, quantity]) => ({ product_id, quantity }));
-      await api('/sales', { method: 'POST', body: JSON.stringify({ items, payment_method: 'mock_terminal' }) });
-      hap.success();
-      toast.show(`Sale €${cartTotal.toFixed(2)} confirmed`, 'success');
+      const r = await mutate('/sales', { items, payment_method: 'mock_terminal' }, {
+        label: `Sale €${cartTotal.toFixed(2)}`,
+      });
+      if (r.online) {
+        hap.success();
+        toast.show(`Sale €${cartTotal.toFixed(2)} confirmed`, 'success');
+      } else {
+        hap.warning();
+        toast.show('Offline — sale queued, will sync', 'info');
+      }
       setCart({});
       await load();
     } catch (e: any) {
@@ -84,10 +90,32 @@ export default function POS() {
     }
   };
 
-  const logout = async () => {
-    await clearSession();
-    router.replace('/');
+  const sendToTerminal = async () => {
+    if (!cartCount) return;
+    setTerminalWait(true);
+    hap.medium();
   };
+
+  const simulateTerminalConfirm = async () => {
+    try {
+      const items = Object.entries(cart).map(([product_id, quantity]) => ({ product_id, quantity }));
+      const r = await api<any>('/payments/simulate-terminal', {
+        method: 'POST',
+        body: JSON.stringify({ items, amount: cartTotal }),
+      });
+      hap.success();
+      toast.show(`Terminal sale: ${r.sale.terminal_transaction_id}`, 'success');
+      setCart({});
+      setTerminalWait(false);
+      await load();
+    } catch (e: any) {
+      hap.error();
+      toast.show(e.message || 'Terminal failed', 'error');
+      setTerminalWait(false);
+    }
+  };
+
+  const logout = async () => { await clearSession(); router.replace('/'); };
 
   if (loading) {
     return (
@@ -126,11 +154,10 @@ export default function POS() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>POS</Text>
-          <Text style={styles.mono}>{user?.name} • {shift.walker_name ? '' : ''}SHIFT OPEN</Text>
+          <Text style={styles.mono}>{user?.name} • SHIFT OPEN</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={styles.syncDot} />
-          <Text style={styles.mono}>ONLINE</Text>
+          <SyncBadge />
           <Pressable onPress={logout} testID="logout-btn"><Ionicons name="log-out-outline" size={24} color={theme.color.onSurface} /></Pressable>
         </View>
       </View>
@@ -169,7 +196,7 @@ export default function POS() {
             </View>
           );
         })}
-        <View style={{ height: 100 }} />
+        <View style={{ height: 140 }} />
       </ScrollView>
 
       {cartCount > 0 && (
@@ -178,16 +205,39 @@ export default function POS() {
             <Text style={styles.checkQty}>{cartCount} ITEMS</Text>
             <Text style={styles.checkTotal}>€{cartTotal.toFixed(2)}</Text>
           </View>
-          <Pressable
-            testID="confirm-sale"
-            style={[styles.checkBtn, submitting && { opacity: 0.5 }]}
-            onPress={confirmSale}
-            disabled={submitting}
-          >
-            {submitting ? <ActivityIndicator color="#000" /> : <Text style={styles.checkBtnText}>CONFIRM SALE →</Text>}
-          </Pressable>
+          <View style={{ gap: 6 }}>
+            <Pressable testID="send-terminal" style={styles.termBtn} onPress={sendToTerminal}>
+              <Ionicons name="card" size={14} color="#FFF" />
+              <Text style={styles.termBtnText}>TERMINAL</Text>
+            </Pressable>
+            <Pressable
+              testID="confirm-sale"
+              style={[styles.checkBtn, submitting && { opacity: 0.5 }]}
+              onPress={confirmSale}
+              disabled={submitting}
+            >
+              {submitting ? <ActivityIndicator color="#000" /> : <Text style={styles.checkBtnText}>MANUAL →</Text>}
+            </Pressable>
+          </View>
         </View>
       )}
+
+      <Modal visible={terminalWait} transparent animationType="fade" onRequestClose={() => setTerminalWait(false)}>
+        <View style={styles.modalBg}>
+          <View style={styles.modalBox}>
+            <Ionicons name="card" size={48} color={theme.color.brand} />
+            <Text style={styles.modalTitle}>INSERT CARD ON TERMINAL</Text>
+            <Text style={styles.modalMono}>€{cartTotal.toFixed(2)} • {cartCount} ITEMS</Text>
+            <Text style={styles.modalSub}>Waiting for terminal confirmation...</Text>
+            <Pressable style={styles.modalConfirm} onPress={simulateTerminalConfirm} testID="sim-terminal-ok">
+              <Text style={styles.modalConfirmText}>SIMULATE TERMINAL OK</Text>
+            </Pressable>
+            <Pressable onPress={() => setTerminalWait(false)} testID="sim-terminal-cancel">
+              <Text style={styles.modalCancel}>CANCEL</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -196,62 +246,38 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.color.surface },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: theme.color.borderStrong,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: 2, borderBottomColor: theme.color.borderStrong,
   },
   title: { fontSize: 22, fontWeight: '900', letterSpacing: -1, color: theme.color.onSurface },
   mono: { fontFamily: theme.font.mono, fontSize: 12, color: theme.color.muted, marginTop: 2, letterSpacing: 1 },
-  syncDot: { width: 10, height: 10, backgroundColor: theme.color.success, borderWidth: 1, borderColor: theme.color.borderStrong },
-  grid: {
-    padding: 12,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  card: {
-    width: '48.5%',
-    borderWidth: 2,
-    borderColor: theme.color.borderStrong,
-    backgroundColor: theme.color.surface,
-    position: 'relative',
-  },
+  grid: { padding: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  card: { width: '48.5%', borderWidth: 2, borderColor: theme.color.borderStrong, backgroundColor: theme.color.surface, position: 'relative' },
   cardSku: { fontFamily: theme.font.mono, fontSize: 11, fontWeight: '700', color: theme.color.muted, letterSpacing: 1 },
   cardName: { fontSize: 16, fontWeight: '800', color: theme.color.onSurface, marginTop: 6 },
   cardBottom: { marginTop: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   cardPrice: { fontSize: 20, fontWeight: '900', color: theme.color.onSurface, fontFamily: theme.font.mono },
   cardStock: { fontFamily: theme.font.mono, fontSize: 11, fontWeight: '800', color: theme.color.muted, letterSpacing: 1 },
-  cartBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.color.brand,
-    borderWidth: 2,
-    borderColor: theme.color.borderStrong,
-  },
+  cartBadge: { position: 'absolute', top: -2, right: -2, flexDirection: 'row', alignItems: 'center', backgroundColor: theme.color.brand, borderWidth: 2, borderColor: theme.color.borderStrong },
   badgeBtn: { paddingHorizontal: 10, paddingVertical: 6 },
   badgeBtnText: { color: '#FFF', fontSize: 18, fontWeight: '900' },
   badgeCount: { color: '#FFF', fontSize: 16, fontWeight: '900', paddingHorizontal: 4, fontFamily: theme.font.mono },
-  checkoutBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: theme.color.surfaceInverse,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 2,
-    borderTopColor: theme.color.borderStrong,
-  },
+  checkoutBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: theme.color.surfaceInverse, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 2, borderTopColor: theme.color.borderStrong },
   checkQty: { color: '#FFF', fontSize: 11, letterSpacing: 1, fontWeight: '800' },
   checkTotal: { color: '#FFF', fontSize: 28, fontWeight: '900', fontFamily: theme.font.mono },
-  checkBtn: { backgroundColor: theme.color.surface, borderWidth: 2, borderColor: '#FFF', paddingVertical: 16, paddingHorizontal: 18 },
-  checkBtnText: { color: '#000', fontSize: 14, fontWeight: '900', letterSpacing: 1 },
+  checkBtn: { backgroundColor: theme.color.surface, borderWidth: 2, borderColor: '#FFF', paddingVertical: 10, paddingHorizontal: 14 },
+  checkBtnText: { color: '#000', fontSize: 13, fontWeight: '900', letterSpacing: 1 },
+  termBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.color.brand, borderWidth: 2, borderColor: '#FFF', paddingVertical: 10, paddingHorizontal: 14, justifyContent: 'center' },
+  termBtnText: { color: '#FFF', fontSize: 13, fontWeight: '900', letterSpacing: 1 },
   refreshBtn: { marginTop: 24, borderWidth: 2, borderColor: theme.color.borderStrong, paddingHorizontal: 24, paddingVertical: 12 },
   refreshText: { fontSize: 14, fontWeight: '900', letterSpacing: 2 },
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  modalBox: { backgroundColor: '#FFF', borderWidth: 3, borderColor: theme.color.borderStrong, padding: 28, alignItems: 'center', gap: 12, width: '100%', maxWidth: 340 },
+  modalTitle: { fontSize: 18, fontWeight: '900', letterSpacing: 1, textAlign: 'center' },
+  modalMono: { fontFamily: theme.font.mono, fontSize: 22, fontWeight: '900' },
+  modalSub: { fontSize: 12, color: theme.color.muted, letterSpacing: 1, fontFamily: theme.font.mono },
+  modalConfirm: { backgroundColor: theme.color.surfaceInverse, paddingVertical: 14, paddingHorizontal: 20, marginTop: 8, borderWidth: 2, borderColor: theme.color.borderStrong },
+  modalConfirmText: { color: '#FFF', fontWeight: '900', letterSpacing: 1 },
+  modalCancel: { color: theme.color.muted, fontWeight: '900', letterSpacing: 1, marginTop: 6 },
 });
