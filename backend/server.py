@@ -1,5 +1,5 @@
 """walkFellas backend — mobile POS + distributed inventory operations."""
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, status
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, status, Request, Header
 from fastapi.security import OAuth2PasswordBearer
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -14,6 +14,8 @@ import os
 import uuid
 import secrets
 import logging
+
+import revolut_service as revolut
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -129,6 +131,12 @@ class WalkerCreate(BaseModel):
     name: str
     event_id: str
     pin: str  # 4-6 digits
+    terminal_code: Optional[str] = None  # manually-assigned Revolut Terminal label, e.g. "REV73"
+
+
+class TerminalAssign(BaseModel):
+    terminal_code: str
+    revolut_terminal_id: Optional[str] = None  # real Revolut device ID, filled in after sync
 
 
 class StaffCreate(BaseModel):
@@ -167,6 +175,11 @@ class RestockCreate(BaseModel):
 
 class RestockApprove(BaseModel):
     delivered_items: List[SaleItem]
+
+
+class RevolutChargeCreate(BaseModel):
+    items: List[SaleItem]
+    amount: float
 
 
 class WasteValidate(BaseModel):
@@ -339,6 +352,7 @@ async def create_walker(body: WalkerCreate, user=Depends(require_roles("admin", 
         "name": body.name,
         "event_id": body.event_id,
         "pin_hash": hash_secret(body.pin),
+        "terminal_code": body.terminal_code.upper() if body.terminal_code else None,
         "status": "active",
         "created_at": now_utc().isoformat(),
     }
@@ -369,6 +383,21 @@ async def list_walkers(event_id: Optional[str] = None, user=Depends(require_role
     if event_id:
         q["event_id"] = event_id
     return await db.users.find(q, {"_id": 0, "pin_hash": 0}).to_list(1000)
+
+
+@api.put("/walkers/{walker_id}/terminal")
+async def assign_terminal(walker_id: str, body: TerminalAssign, user=Depends(require_roles("admin", "supervisor"))):
+    """Link a walker to their physical Revolut Terminal. `terminal_code` is the
+    manual ops label (e.g. "REV73"); `revolut_terminal_id` is the real device ID
+    from Revolut once terminals have been synced (optional until then)."""
+    walker = await db.users.find_one({"id": walker_id, "role": "walker"})
+    if not walker:
+        raise HTTPException(404, "Walker not found")
+    updates = {"terminal_code": body.terminal_code.upper()}
+    if body.revolut_terminal_id:
+        updates["revolut_terminal_id"] = body.revolut_terminal_id
+    await db.users.update_one({"id": walker_id}, {"$set": updates})
+    return {"ok": True, **updates}
 
 
 # ---------- Shifts ----------
@@ -620,9 +649,6 @@ class TerminalWebhook(BaseModel):
     terminal_id: Optional[str] = "TERMINAL-01"
 
 
-from fastapi import Header
-
-
 @api.post("/payments/terminal-webhook")
 async def terminal_webhook(
     body: TerminalWebhook,
@@ -696,6 +722,208 @@ async def simulate_terminal(body: TerminalSimReq, user=Depends(require_roles("wa
     )
     # Invoke internally (bypass network) with correct signature
     return await terminal_webhook(body_dict, x_terminal_signature=TERMINAL_SECRET)
+
+
+# ---------- Revolut Terminal integration ----------
+# Each walker's assigned physical Revolut Terminal ("REV73" etc.) charges the
+# card directly. This section creates a Merchant Order + pushes the payment
+# intent to that exact device, then confirms via signed webhook — see
+# revolut_service.py for full setup docs and current sandbox-pending status.
+
+@api.get("/admin/revolut/status")
+async def revolut_status(user=Depends(require_roles("admin", "supervisor"))):
+    return {"configured": revolut.is_configured(), "env": revolut.REVOLUT_ENV}
+
+
+@api.post("/admin/revolut/sync-terminals")
+async def sync_terminals(user=Depends(require_roles("admin"))):
+    """Pull the merchant's real Revolut Terminal device IDs into our DB so
+    they can be linked to walkers' manual terminal_code labels."""
+    if not revolut.is_configured():
+        raise HTTPException(400, "Revolut Merchant API not configured yet — add REVOLUT_MERCHANT_SECRET_KEY to backend/.env")
+    try:
+        terminals = await revolut.list_terminals()
+    except Exception as e:
+        raise HTTPException(502, f"Revolut sync failed: {e}")
+    count = 0
+    for t in terminals:
+        tid = t.get("id") or t.get("terminal_id")
+        if not tid:
+            continue
+        await db.revolut_terminals.update_one(
+            {"revolut_terminal_id": tid},
+            {"$set": {"revolut_terminal_id": tid, "label": t.get("name") or t.get("label") or tid, "raw": t}},
+            upsert=True,
+        )
+        count += 1
+    return {"ok": True, "synced": count}
+
+
+@api.get("/admin/revolut/terminals")
+async def get_synced_terminals(user=Depends(require_roles("admin", "supervisor"))):
+    return await db.revolut_terminals.find({}, {"_id": 0}).to_list(200)
+
+
+async def _finalize_revolut_payment(pending_id: str, source: str, revolut_ref: Optional[str] = None):
+    """Shared finalize logic used by BOTH the real Revolut webhook and the
+    dev /simulate endpoint below, so every code path — sandbox-pending demo
+    mode today, live webhooks tomorrow — deducts stock and records the sale
+    identically. Idempotent: safe to call twice for the same pending_id."""
+    pending = await db.pending_payments.find_one({"id": pending_id})
+    if not pending:
+        return None
+    if pending["status"] == "paid":
+        return await db.sales.find_one({"id": pending.get("sale_id")}, {"_id": 0})
+
+    shift = await db.shifts.find_one({"id": pending["shift_id"]})
+    if not shift or shift["status"] != "open":
+        await db.pending_payments.update_one({"id": pending_id}, {"$set": {"status": "failed", "failure_reason": "shift_closed"}})
+        return None
+
+    stock = await shift_stock_map(pending["shift_id"])
+    for it in pending["items"]:
+        if stock.get(it["product_id"], 0) < it["quantity"]:
+            await db.pending_payments.update_one({"id": pending_id}, {"$set": {"status": "failed", "failure_reason": "insufficient_stock"}})
+            return None
+
+    sale = {
+        "id": new_id(),
+        "shift_id": pending["shift_id"],
+        "walker_id": pending["walker_id"],
+        "event_id": pending["event_id"],
+        "payment_method": "revolut_terminal",
+        "terminal_code": pending.get("terminal_code"),
+        "terminal_transaction_id": revolut_ref or f"SIM-{pending_id[:8].upper()}",
+        "items": pending["items"],
+        "total": round(pending["amount"], 2),
+        "timestamp": now_utc().isoformat(),
+    }
+    for it in pending["items"]:
+        await record_movement(pending["shift_id"], it["product_id"], it["quantity"], "sale", "revolut", sale["id"])
+    await db.sales.insert_one(sale)
+    sale.pop("_id", None)
+    await db.pending_payments.update_one(
+        {"id": pending_id},
+        {"$set": {"status": "paid", "sale_id": sale["id"], "confirmed_via": source, "confirmed_at": now_utc().isoformat()}}
+    )
+    return sale
+
+
+@api.post("/payments/revolut/charge")
+async def revolut_charge(body: RevolutChargeCreate, user=Depends(require_roles("walker"))):
+    """Walker taps 'Charge card' — creates the pending payment, and if
+    Revolut is configured, pushes it live to their assigned Terminal.
+    Otherwise returns simulated=True so the app can show the dev fallback."""
+    shift = await db.shifts.find_one({"walker_id": user["id"], "status": "open"})
+    if not shift:
+        raise HTTPException(400, "No open shift")
+    terminal_code = user.get("terminal_code")
+    if not terminal_code:
+        raise HTTPException(400, "No terminal assigned — ask your supervisor")
+
+    stock = await shift_stock_map(shift["id"])
+    for it in body.items:
+        if stock.get(it.product_id, 0) < it.quantity:
+            raise HTTPException(400, f"Insufficient stock for {it.product_id}")
+
+    pending = {
+        "id": new_id(),
+        "walker_id": user["id"],
+        "shift_id": shift["id"],
+        "event_id": user["event_id"],
+        "terminal_code": terminal_code,
+        "items": [it.dict() for it in body.items],
+        "amount": round(body.amount, 2),
+        "status": "awaiting_payment",
+        "simulated": True,
+        "created_at": now_utc().isoformat(),
+    }
+
+    if revolut.is_configured():
+        walker_full = await db.users.find_one({"id": user["id"]})
+        revolut_terminal_id = (walker_full or {}).get("revolut_terminal_id")
+        if not revolut_terminal_id:
+            raise HTTPException(400, f"Terminal {terminal_code} isn't linked to a Revolut device yet — ask an admin to sync & link it")
+        try:
+            order = await revolut.create_order(
+                amount=body.amount, currency="EUR",
+                description=f"walkFellas sale · {terminal_code}",
+                metadata={"pending_id": pending["id"], "walker_id": user["id"], "terminal_code": terminal_code},
+            )
+            await revolut.push_payment_to_terminal(order["id"], revolut_terminal_id)
+            pending["simulated"] = False
+            pending["revolut_order_id"] = order.get("id")
+            pending["revolut_order_token"] = order.get("token")
+        except Exception as e:
+            log.error(f"Revolut charge failed, falling back to demo mode: {e}")
+            pending["simulated"] = True  # fail open — walker keeps selling
+
+    await db.pending_payments.insert_one(dict(pending))
+    pending.pop("_id", None)
+    return pending
+
+
+@api.get("/payments/revolut/{pending_id}/status")
+async def revolut_payment_status(pending_id: str, user=Depends(require_roles("walker"))):
+    """Polled every ~1.5s by the app while the 'waiting for card' screen is
+    open. Polling (not WebSockets) is the deliberate choice here — walkers
+    work at festivals/venues with patchy connectivity, and a lightweight
+    poll survives brief drops far better than a persistent socket does."""
+    pending = await db.pending_payments.find_one({"id": pending_id, "walker_id": user["id"]}, {"_id": 0})
+    if not pending:
+        raise HTTPException(404, "Not found")
+    return pending
+
+
+@api.post("/payments/revolut/{pending_id}/simulate")
+async def revolut_payment_simulate(pending_id: str, user=Depends(require_roles("walker"))):
+    """Stands in for the real Revolut webhook while sandbox access is
+    pending — runs the exact same finalize logic a live webhook would."""
+    pending = await db.pending_payments.find_one({"id": pending_id, "walker_id": user["id"]})
+    if not pending:
+        raise HTTPException(404, "Not found")
+    sale = await _finalize_revolut_payment(pending_id, source="simulate")
+    if not sale:
+        updated = await db.pending_payments.find_one({"id": pending_id}, {"_id": 0})
+        raise HTTPException(400, f"Payment could not be confirmed: {updated.get('failure_reason', 'unknown')}")
+    return {"ok": True, "sale": sale}
+
+
+@api.post("/payments/revolut/{pending_id}/cancel")
+async def revolut_payment_cancel(pending_id: str, user=Depends(require_roles("walker"))):
+    await db.pending_payments.update_one(
+        {"id": pending_id, "walker_id": user["id"], "status": "awaiting_payment"},
+        {"$set": {"status": "cancelled"}}
+    )
+    return {"ok": True}
+
+
+@api.post("/payments/revolut/webhook")
+async def revolut_webhook_endpoint(request: Request):
+    """Real Revolut Merchant API webhook — HMAC-SHA256 signed. Locates the
+    matching pending payment by order token and finalizes it identically to
+    the /simulate path above."""
+    raw = await request.body()
+    signature = request.headers.get("Revolut-Signature") or request.headers.get("X-Revolut-Signature", "")
+    if not revolut.verify_webhook_signature(raw, signature):
+        raise HTTPException(401, "Invalid webhook signature")
+
+    payload = await request.json()
+    order = payload.get("order", payload)
+    order_token = order.get("token") or order.get("id")
+    event_state = str(payload.get("event") or payload.get("event_type") or "").lower()
+    order_state = str(order.get("state") or "").lower()
+
+    pending = await db.pending_payments.find_one({"revolut_order_token": order_token})
+    if not pending:
+        return {"ok": True, "ignored": True}
+
+    if "completed" in event_state or order_state == "completed":
+        await _finalize_revolut_payment(pending["id"], source="webhook", revolut_ref=order.get("id"))
+    elif "failed" in event_state or "cancel" in event_state or order_state in ("failed", "cancelled"):
+        await db.pending_payments.update_one({"id": pending["id"]}, {"$set": {"status": "failed", "failure_reason": f"revolut_{order_state or event_state}"}})
+
+    return {"ok": True}
 
 
 # ---------- Close shift + reconciliation ----------
@@ -846,12 +1074,22 @@ async def seed_data():
             })
     # Walker(s)
     if await db.users.count_documents({"role": "walker", "event_id": event_id}) == 0:
-        for name, pin in [("Jake Miller", "1234"), ("Luca Rossi", "5678"), ("Maya Silva", "9012")]:
+        for name, pin, terminal_code in [
+            ("Jake Miller", "1234", "REV71"),
+            ("Luca Rossi", "5678", "REV72"),
+            ("Maya Silva", "9012", "REV73"),
+        ]:
             await db.users.insert_one({
                 "id": new_id(), "role": "walker", "name": name,
                 "event_id": event_id, "pin_hash": hash_secret(pin),
+                "terminal_code": terminal_code,
                 "status": "active", "created_at": now_utc().isoformat(),
             })
+    else:
+        # Backfill terminal_code for walkers created before this feature existed
+        no_terminal = await db.users.find({"role": "walker", "event_id": event_id, "terminal_code": {"$exists": False}}).sort("created_at", 1).to_list(50)
+        for idx, w in enumerate(no_terminal):
+            await db.users.update_one({"id": w["id"]}, {"$set": {"terminal_code": f"REV{71 + idx}"}})
     return {"ok": True, "event_code": "FEST01"}
 
 
@@ -878,6 +1116,9 @@ async def on_startup():
     await db.users.create_index([("event_id", 1), ("role", 1)])
     await db.products.create_index([("event_id", 1), ("sku", 1)])
     await db.movements.create_index([("shift_id", 1), ("timestamp", -1)])
+    await db.pending_payments.create_index("walker_id")
+    await db.pending_payments.create_index("revolut_order_token")
+    await db.revolut_terminals.create_index("revolut_terminal_id", unique=True)
     # Auto-seed on startup
     try:
         await seed_data()

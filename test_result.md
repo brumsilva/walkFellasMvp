@@ -102,7 +102,20 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-## user_problem_statement: "Reajuste todas as telas para que siga os padrões de design como está no login na tela de pos do walker, seguindo esse estilo moderno atualizado, arredondado tirando esse aspecto quadrado e bruto do design atual." (Redesign all screens to follow the modern rounded design already used in the Login screen and Walker POS screen, removing the old brutalist/square hard-bordered look.)
+## user_problem_statement: "Reajuste todas as telas para que siga os padrões de design como está no login na tela de pos do walker, seguindo esse estilo moderno atualizado, arredondado tirando esse aspecto quadrado e bruto do design atual." (Redesign all screens to follow the modern rounded design already used in the Login screen and Walker POS screen, removing the old brutalist/square hard-bordered look.) FOLLOW-UP: "analise todo o contexto apresentado e o modelo de negócio e implemente a integração da aba de vendas com as maquininhas da revolut business, leve em consideração que cada walker recebe uma POS da revolut com um codigo específico como REV73. Faça a integração de forma mais performática possível, fazendo com que seja prática o uso pelos walkers" (Integrate the Sales/POS tab with Revolut Business card terminals; each walker has a physical Revolut Terminal identified by a manual code like "REV73").
+
+## backend:
+  - task: "Revolut Business Merchant API integration (Terminal push payments, sandbox-pending graceful fallback)"
+    implemented: true
+    working: true
+    file: "backend/revolut_service.py, backend/server.py, backend/.env"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: true
+        -agent: "main"
+        -comment: "User confirmed: walkers use real Revolut Terminal hardware, business already has a Revolut Business account but Merchant/Sandbox API access is still pending approval, and REV73-style terminal_code labels are assigned manually by ops. Built revolut_service.py (create_order, list_terminals, push_payment_to_terminal, HMAC-SHA256 webhook signature verification) fully wired into server.py behind `revolut.is_configured()` — returns False until REVOLUT_MERCHANT_SECRET_KEY is filled into backend/.env, at which point every endpoint switches from demo/simulate mode to live Revolut calls with ZERO code changes. New endpoints: PUT /walkers/{id}/terminal (assign terminal_code + revolut_terminal_id), GET /admin/revolut/status, POST /admin/revolut/sync-terminals, GET /admin/revolut/terminals, POST /payments/revolut/charge (creates pending_payments doc, pushes to Revolut if configured else simulated:true), GET /payments/revolut/{id}/status (polled every 1.5s by app — chosen over WebSockets deliberately for resilience against patchy venue/festival connectivity), POST /payments/revolut/{id}/simulate (dev stand-in for the real webhook, shares the exact same _finalize_revolut_payment() stock-deduction/sale-creation logic as the live webhook path), POST /payments/revolut/{id}/cancel, POST /payments/revolut/webhook (HMAC verified). Seed data now assigns REV71/72/73 to the 3 demo walkers; existing walkers without a code are auto-backfilled. Verified full charge→awaiting_payment→simulate→paid lifecycle via curl end-to-end, plus PUT /walkers/{id}/terminal reassignment and /admin/revolut/status. Backend testing agent should verify: charge creation with/without terminal_code assigned, insufficient-stock rejection, simulate idempotency (calling twice should not double-deduct stock), cancel flow, and webhook signature rejection when REVOLUT_WEBHOOK_SECRET is unset (should always reject since no secret configured yet)."
 
 ## frontend:
   - task: "Redesign all remaining screens to modern rounded style (matching index.tsx login / (walker)/pos.tsx / (admin)/dashboard.tsx reference)"
@@ -116,23 +129,47 @@
         -working: true
         -agent: "main"
         -comment: "Restored project from user-uploaded walkFellas.rar (env was empty). Recreated backend/.env (MONGO_URL) and frontend/.env (EXPO_PUBLIC_BACKEND_URL), installed deps, verified seed/login work. Found that index.tsx (login), (walker)/pos.tsx, and (admin)/dashboard.tsx already used the modern rounded theme (theme.radius.xl/pill, soft shadows, Montserrat) while 11 other screens still used the old brutalist theme (2pt hard black borders, 0 radius, ALL CAPS). Rewrote all 11 screens to use theme.radius.pill for buttons/chips/steppers, theme.radius.xl/xxl for cards, theme.shadow.sm/md/lg for elevation, circular avatars/icon bubbles, and Title Case copy consistent with the reference screens. Preserved all business logic, state, API calls, and testIDs unchanged - style-only rewrite. Fixed a header layout overlap bug on (supervisor)/walkers.tsx (title+subtitle collided) discovered during visual QA. Verified visually via screenshots: login, walker (Sell/Restock/Waste/Close/Profile), supervisor (Queue/Team/Waste/Profile), admin (Dashboard/Events/Catalog/Team) all render correctly with rounded pill buttons, rounded cards with soft shadows, no hard borders remaining. auto_frontend_testing_agent also confirmed 0 hard black borders / 0 sharp corners across the codebase."
+  - task: "Walker POS: Revolut Terminal charge flow (replaces generic 'simulate terminal' with terminal_code-aware async charge + poll)"
+    implemented: true
+    working: "NA"
+    file: "app/(walker)/pos.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Terminal button now shows the walker's actual assigned terminal_code (e.g. 'REV71') instead of generic 'Terminal' label, disabled+greyed if none assigned. Tapping calls POST /payments/revolut/charge, opens a waiting modal ('Insert card on REV71'), and polls GET /payments/revolut/{id}/status every 1.5s until paid/failed/cancelled. While Revolut sandbox is pending, backend returns simulated:true and the modal shows a clearly-labeled dev-only 'Simulate terminal OK' button (subtext: 'sandbox pending — dev only') so the full flow remains testable; this button will simply stop appearing once real Revolut keys are configured, no frontend change needed. Cancel button aborts via POST /payments/revolut/{id}/cancel and clears polling interval. Not yet UI-tested by testing agent."
+  - task: "Admin Team screen: assign/edit walker's Revolut Terminal code (REV73-style label)"
+    implemented: true
+    working: "NA"
+    file: "app/(admin)/team.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Added optional 'Revolut Terminal code' field to the New Walker form, and a tappable pill on each walker row (shows current code or 'Assign') that opens a small modal to set/change the code via PUT /walkers/{id}/terminal. Also added a status banner reading Revolut connection state from GET /admin/revolut/status ('sandbox pending — demo mode active' until real keys are added). Not yet UI-tested by testing agent."
 
 ## metadata:
   created_by: "main_agent"
-  version: "1.0"
-  test_sequence: 1
+  version: "1.1"
+  test_sequence: 2
   run_ui: false
 
 ## test_plan:
   current_focus:
-    - "Redesign all remaining screens to modern rounded style"
+    - "Revolut Business Merchant API integration (Terminal push payments, sandbox-pending graceful fallback)"
+    - "Walker POS: Revolut Terminal charge flow"
+    - "Admin Team screen: assign/edit walker's Revolut Terminal code"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 ## agent_communication:
     -agent: "main"
-    -message: "Environment was restored from user's walkFellas.rar upload (original /app was empty). Completed full visual redesign of all 11 remaining brutalist screens to match the already-modern login/POS/dashboard style (rounded corners, soft shadows, pill buttons, Montserrat). No backend changes were made. Visually verified via screenshots across all 3 roles (walker/supervisor/admin). Frontend-only styling change; backend testing not required for this task."
+    -message: "Environment was restored from user's walkFellas.rar upload (original /app was empty). Completed full visual redesign of all 11 remaining brutalist screens to match the already-modern login/POS/dashboard style. Then implemented Revolut Business Merchant API integration for the walker POS sales flow: each walker has a manually-assigned terminal_code (REV71/72/73 seeded), charge/status/simulate/cancel/webhook endpoints are all built and verified end-to-end via curl in DEMO MODE (Revolut sandbox access is pending user's approval from Revolut, so REVOLUT_MERCHANT_SECRET_KEY / REVOLUT_WEBHOOK_SECRET are empty placeholders in backend/.env — is_configured() returns False and the app gracefully uses a 'simulate' fallback that shares 100% of the real webhook's finalize logic). Please run deep_testing_backend_v2 on the new Revolut endpoints next. Frontend (POS terminal button + Team terminal assignment) implemented but NOT yet tested by any testing agent — will ask user before invoking frontend testing per protocol."
 
 user_problem_statement: "Verify visual redesign of walkFellas app from brutalist style (hard black 2pt borders, 0 border-radius, ALL CAPS) to modern rounded design system (soft shadows, rounded cards/pills, Montserrat font, brand red #E63946). Test all three user roles (walker, supervisor, admin) and confirm no functionality broke."
 

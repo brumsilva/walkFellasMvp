@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Modal } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,10 +13,20 @@ import { Logo } from '@/src/components/Logo';
 
 type Product = { id: string; sku: string; name: string; price: number; category: string };
 type Shift = { id: string; walker_name: string; opened_at: string } | null;
+type PendingPayment = {
+  id: string;
+  terminal_code: string;
+  amount: number;
+  status: 'awaiting_payment' | 'paid' | 'failed' | 'cancelled';
+  simulated: boolean;
+  failure_reason?: string;
+} | null;
 
 const CATEGORY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
   beer: 'beer', wine: 'wine', water: 'water', soda: 'cafe', snack: 'fast-food', other: 'pricetag',
 };
+
+const POLL_INTERVAL_MS = 1500;
 
 export default function POS() {
   const router = useRouter();
@@ -28,7 +38,9 @@ export default function POS() {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [terminalWait, setTerminalWait] = useState(false);
+  const [chargeLoading, setChargeLoading] = useState(false);
+  const [pending, setPending] = useState<PendingPayment>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const safeProducts = Array.isArray(products) ? products : [];
 
   const load = useCallback(async () => {
@@ -92,21 +104,71 @@ export default function POS() {
     } finally { setSubmitting(false); }
   };
 
-  const sendToTerminal = () => { if (!cartCount) return; setTerminalWait(true); hap.medium(); };
+  const stopPolling = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+  };
 
-  const simulateTerminalConfirm = async () => {
+  useEffect(() => () => stopPolling(), []);
+
+  const startTerminalCharge = async () => {
+    if (!cartCount) return;
+    if (!user?.terminal_code) {
+      hap.warning();
+      toast.show('No terminal assigned — ask your supervisor', 'error');
+      return;
+    }
+    setChargeLoading(true);
+    hap.medium();
     try {
       const items = Object.entries(cart).map(([product_id, quantity]) => ({ product_id, quantity }));
-      const r = await api<any>('/payments/simulate-terminal', { method: 'POST', body: JSON.stringify({ items, amount: cartTotal }) });
-      hap.success();
-      toast.show(`Terminal · ${r.sale.terminal_transaction_id}`, 'success');
-      setCart({}); setTerminalWait(false);
-      await load();
+      const p = await api<any>('/payments/revolut/charge', { method: 'POST', body: JSON.stringify({ items, amount: cartTotal }) });
+      setPending(p);
+      pollRef.current = setInterval(() => pollPaymentStatus(p.id), POLL_INTERVAL_MS);
     } catch (e: any) {
       hap.error();
-      toast.show(e.message || 'Terminal failed', 'error');
-      setTerminalWait(false);
+      toast.show(e.message || 'Could not start charge', 'error');
+    } finally {
+      setChargeLoading(false);
     }
+  };
+
+  const pollPaymentStatus = async (pendingId: string) => {
+    try {
+      const p = await api<any>(`/payments/revolut/${pendingId}/status`);
+      setPending(p);
+      if (p.status === 'paid') {
+        stopPolling();
+        hap.success();
+        toast.show(`Payment confirmed · ${p.terminal_code}`, 'success');
+        setCart({});
+        setTimeout(() => setPending(null), 900);
+        await load();
+      } else if (p.status === 'failed' || p.status === 'cancelled') {
+        stopPolling();
+        hap.error();
+      }
+    } catch {
+      // transient network hiccup — next poll tick will retry
+    }
+  };
+
+  const simulateTerminalConfirm = async () => {
+    if (!pending) return;
+    try {
+      await api<any>(`/payments/revolut/${pending.id}/simulate`, { method: 'POST' });
+      await pollPaymentStatus(pending.id);
+    } catch (e: any) {
+      hap.error();
+      toast.show(e.message || 'Simulation failed', 'error');
+    }
+  };
+
+  const cancelTerminalCharge = async () => {
+    if (pending) {
+      try { await api(`/payments/revolut/${pending.id}/cancel`, { method: 'POST' }); } catch {}
+    }
+    stopPolling();
+    setPending(null);
   };
 
   const logout = async () => { await clearSession(); router.replace('/'); };
@@ -206,9 +268,18 @@ export default function POS() {
             <Text style={styles.checkQty}>{cartCount} item{cartCount > 1 ? 's' : ''}</Text>
             <Text style={styles.checkTotal}>€{cartTotal.toFixed(2)}</Text>
           </View>
-          <Pressable testID="send-terminal" style={styles.termBtn} onPress={sendToTerminal}>
-            <Ionicons name="card" size={16} color={theme.color.brand} />
-            <Text style={styles.termBtnText}>Terminal</Text>
+          <Pressable
+            testID="send-terminal"
+            style={[styles.termBtn, !user?.terminal_code && { opacity: 0.5 }]}
+            onPress={startTerminalCharge}
+            disabled={chargeLoading}
+          >
+            {chargeLoading ? <ActivityIndicator color={theme.color.brand} size="small" /> : (
+              <>
+                <Ionicons name="card" size={16} color={theme.color.brand} />
+                <Text style={styles.termBtnText}>{user?.terminal_code || 'No terminal'}</Text>
+              </>
+            )}
           </Pressable>
           <Pressable
             testID="confirm-sale"
@@ -226,21 +297,47 @@ export default function POS() {
         </View>
       )}
 
-      <Modal visible={terminalWait} transparent animationType="fade" onRequestClose={() => setTerminalWait(false)}>
+      <Modal visible={!!pending} transparent animationType="fade" onRequestClose={cancelTerminalCharge}>
         <View style={styles.modalBg}>
           <View style={styles.modalBox}>
-            <View style={styles.modalIcon}>
-              <Ionicons name="card" size={40} color={theme.color.brand} />
-            </View>
-            <Text style={styles.modalTitle}>Insert card on terminal</Text>
-            <Text style={styles.modalAmount}>€{cartTotal.toFixed(2)}</Text>
-            <Text style={styles.modalSub}>{cartCount} item{cartCount > 1 ? 's' : ''} · waiting…</Text>
-            <Pressable style={styles.modalConfirm} onPress={simulateTerminalConfirm} testID="sim-terminal-ok">
-              <Text style={styles.modalConfirmText}>Simulate terminal OK</Text>
-            </Pressable>
-            <Pressable onPress={() => setTerminalWait(false)} testID="sim-terminal-cancel">
-              <Text style={styles.modalCancel}>Cancel</Text>
-            </Pressable>
+            {pending?.status === 'paid' ? (
+              <>
+                <View style={[styles.modalIcon, { backgroundColor: theme.color.successSoft }]}>
+                  <Ionicons name="checkmark-circle" size={40} color={theme.color.success} />
+                </View>
+                <Text style={styles.modalTitle}>Payment confirmed</Text>
+                <Text style={styles.modalAmount}>€{(pending?.amount || 0).toFixed(2)}</Text>
+              </>
+            ) : pending?.status === 'failed' ? (
+              <>
+                <View style={[styles.modalIcon, { backgroundColor: theme.color.brandSoft }]}>
+                  <Ionicons name="close-circle" size={40} color={theme.color.brand} />
+                </View>
+                <Text style={styles.modalTitle}>Payment failed</Text>
+                <Text style={styles.modalSub}>{pending?.failure_reason || 'Please try again'}</Text>
+                <Pressable style={styles.modalConfirm} onPress={cancelTerminalCharge} testID="terminal-dismiss">
+                  <Text style={styles.modalConfirmText}>Dismiss</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <View style={styles.modalIcon}>
+                  <ActivityIndicator color={theme.color.brand} size="large" />
+                </View>
+                <Text style={styles.modalTitle}>Insert card on {pending?.terminal_code}</Text>
+                <Text style={styles.modalAmount}>€{(pending?.amount || 0).toFixed(2)}</Text>
+                <Text style={styles.modalSub}>{cartCount} item{cartCount > 1 ? 's' : ''} · waiting for card…</Text>
+                {pending?.simulated && (
+                  <Pressable style={styles.modalConfirm} onPress={simulateTerminalConfirm} testID="sim-terminal-ok">
+                    <Text style={styles.modalConfirmText}>Simulate terminal OK</Text>
+                    <Text style={styles.modalConfirmHint}>(sandbox pending — dev only)</Text>
+                  </Pressable>
+                )}
+                <Pressable onPress={cancelTerminalCharge} testID="sim-terminal-cancel">
+                  <Text style={styles.modalCancel}>Cancel</Text>
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -309,7 +406,8 @@ const styles = StyleSheet.create({
   modalTitle: { fontFamily: theme.font.extrabold, fontSize: 18, textAlign: 'center', color: theme.color.onSurface },
   modalAmount: { fontFamily: theme.font.black, fontSize: 32, color: theme.color.brand },
   modalSub: { fontFamily: theme.font.medium, fontSize: 12, color: theme.color.muted },
-  modalConfirm: { backgroundColor: theme.color.onSurface, borderRadius: theme.radius.pill, paddingVertical: 14, paddingHorizontal: 24, marginTop: 12 },
+  modalConfirm: { backgroundColor: theme.color.onSurface, borderRadius: theme.radius.pill, paddingVertical: 14, paddingHorizontal: 24, marginTop: 12, alignItems: 'center' },
   modalConfirmText: { color: '#FFF', fontFamily: theme.font.bold, fontSize: 14 },
+  modalConfirmHint: { color: 'rgba(255,255,255,0.6)', fontFamily: theme.font.medium, fontSize: 9, marginTop: 2 },
   modalCancel: { color: theme.color.muted, fontFamily: theme.font.semibold, marginTop: 4, fontSize: 13 },
 });
