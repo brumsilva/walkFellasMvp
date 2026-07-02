@@ -1,0 +1,145 @@
+{
+  "app_name": "walkFellas",
+  "personality": "5 Brutalist Mobile",
+  "personality_one_liner": "A high-contrast, mechanical operations tool designed for speed and visibility in hostile outdoor environments.",
+  "color": {
+    "surface": "#FFFFFF",
+    "onSurface": "#0A0A0A",
+    "surfaceSecondary": "#F4F4F4",
+    "onSurfaceSecondary": "#1A1A1A",
+    "surfaceTertiary": "#E6E6E6",
+    "onSurfaceTertiary": "#333333",
+    "surfaceInverse": "#0A0A0A",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#E63946",
+    "brandPrimary": "#E63946",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#0A0A0A",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#FADBD8",
+    "onBrandTertiary": "#E63946",
+    "success": "#2A9D8F",
+    "onSuccess": "#FFFFFF",
+    "warning": "#E9C46A",
+    "onWarning": "#0A0A0A",
+    "error": "#E63946",
+    "onError": "#FFFFFF",
+    "info": "#457B9D",
+    "onInfo": "#FFFFFF",
+    "border": "#CCCCCC",
+    "borderStrong": "#0A0A0A",
+    "divider": "#E6E6E6"
+  },
+  "typography": {
+    "displayFontFamily": "Space Grotesk",
+    "textFontFamily": "General Sans",
+    "monoFontFamily": "JetBrains Mono",
+    "scale": { "sm": 12, "base": 14, "lg": 16, "xl": 20, "2xl": 24 }
+  },
+  "spacing": { 
+    "rule": "Intentional whitespace imbalance. Rigid grids, hard alignment, exposed structure. Generous padding around touch targets.",
+    "xs": 4, "sm": 8, "md": 12, "lg": 16, "xl": 24, "2xl": 32, "3xl": 48 
+  },
+  "radius_tokens": { "sm": 0, "md": 0, "lg": 0, "pill": 0 },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [],
+    "dont's": ["Do not use blur or glassmorphism. This is a brutalist, tactical app where clarity and performance beat aesthetics."]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-blur",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    { 
+      "name": "Auth", 
+      "purpose": "Role-based entry point with high-contrast switch.", 
+      "states": { 
+        "loading": "Centered oversized 'LOADING...' text.", 
+        "empty": "N/A", 
+        "error": "Hard black toast with red text." 
+      },
+      "layout": "Top 40% is `auth_hero` image with a heavy black-to-transparent gradient scrim and massive white 'walkFellas' wordmark. Bottom 60% contains a brutalist segment control (Walker PIN | Staff Login) with thick 2pt black borders. Walker view features a massive mechanical numpad (touch targets 56pt+). Staff view uses standard text inputs with sharp rectangular borders. Solid `brandPrimary` submit button pinned to bottom."
+    },
+    { 
+      "name": "Walker Home (POS)", 
+      "purpose": "Ultra-fast item logging for ambulant sales.", 
+      "states": { 
+        "loading": "Skeleton grid with sharp corners.", 
+        "empty": "No items assigned. Contact supervisor.", 
+        "error": "Sync failed icon with retry button." 
+      },
+      "layout": "Minimalist header with current event, Sync status indicator (Green/Red dot with text), and 'Close Shift' action. Main area: 2-column grid of SKUs. Each card is massive, stark white with a 2pt black border, showing item name and stock count in JetBrains Mono. Tapping a card immediately adds +1 to a floating bottom 'Cart' bar. The bottom bar is sticky, inverse colored (`surfaceInverse`), showing Total Quantity and Total Price with a giant 'Confirm Sale' button. Heavy haptics on every tap."
+    },
+    { 
+      "name": "Walker Waste Log", 
+      "purpose": "Camera-first flow to log broken or wasted units.", 
+      "states": { 
+        "loading": "Camera initialization spinner.", 
+        "empty": "No waste logged yet.", 
+        "error": "Camera access denied." 
+      },
+      "layout": "SKU selection list with large typography. Selecting an item opens a full-screen camera view with a sharp center focus frame. Bottom area holds a massive, ergonomic trigger button. Once photo is snapped, transition to a confirmation screen showing the image, quantity selector, and a hard-edged 'Submit to Supervisor' button."
+    },
+    { 
+      "name": "Supervisor Queue", 
+      "purpose": "Action-heavy list of pending restocks and waste validations.", 
+      "states": { 
+        "loading": "Loading skeleton rows.", 
+        "empty": "Illustration of warehouse boxes (`empty_state_queue`) and 'Queue is clear'.", 
+        "error": "Failed to load requests." 
+      },
+      "layout": "Top segmented control: Restock | Waste | Shift Close. List view of requests. Each row is a brutalist card (white, 2pt border, thick dividers) displaying Walker Name, Items, and timestamp in mono font. Each card has two oversized actions: 'Approve' (white bg, black border) and 'Reject' (black bg, white text). Color flips on press."
+    },
+    { 
+      "name": "Admin Dashboard", 
+      "purpose": "Data-dense overview of event performance and discrepancies.", 
+      "states": { 
+        "loading": "Data loading...", 
+        "empty": "No active events.", 
+        "error": "Error loading metrics." 
+      },
+      "layout": "Header with Event Selector. Grid of Key Metric cards (Total Sales, Waste %, Discrepancies) using oversized Space Grotesk numbers. Below, a clean data table showing stock levels and walker performance. High contrast borders separate data rows. Typography uses JetBrains Mono for all numeric data for perfect vertical alignment."
+    }
+  ],
+  "images": {
+    "auth_hero": { 
+      "url": "https://images.pexels.com/photos/13830767/pexels-photo-13830767.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940", 
+      "alt": "Vibrant aerial view of a crowded nighttime concert stadium" 
+    },
+    "empty_state_queue": { 
+      "url": "https://images.unsplash.com/photo-1587293852726-70cdb56c2866?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzJ8MHwxfHNlYXJjaHwxfHx3YXJlaG91c2UlMjBib3hlcyUyMGludmVudG9yeSUyMGxvZ2lzdGljc3xlbnwwfHx8fDE3ODI1ODc3NzZ8MA&ixlib=rb-4.1.0&q=85", 
+      "alt": "Brown cardboard warehouse boxes on metal racks" 
+    }
+  },
+  "haptics": {
+    "auth_pin_press": "light",
+    "pos_item_add": "heavy",
+    "pos_sale_confirm": "success",
+    "waste_camera_snap": "medium",
+    "supervisor_approve": "success",
+    "supervisor_reject": "warning",
+    "tab_switch": "light"
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the 5 Brutalist Mobile personality. Zero border radius (0px) everywhere. Use 2pt hard black borders (`borderStrong`) for primary cards and inputs to create a rugged, mechanical feel.",
+    "Do NOT use any glassmorphism or blur effects. This app must run fast in hostile environments and prioritize extreme readability in direct sunlight. Stick to solid, high-contrast backgrounds.",
+    "Implement the UI with a strict Light Mode default using stark white (`surface`) and black (`onSurface`). Direct sunlight demands high contrast; avoid soft grays for text.",
+    "For Walker screens, touch targets MUST be massive (at least 48pt, preferably 56pt or full-width). Walkers wear gloves and move fast. Minimize taps. Tap SKU -> directly adds to cart. Don't show numeric keyboards for single-item additions.",
+    "Use JetBrains Mono (or a similar monospace font if JetBrains is unavailable via Expo) for all numeric values: SKUs, stock counts, timestamps, and prices. This is critical for the mechanical POS aesthetic.",
+    "The POS confirmation CTA must be sticky at the bottom, outside the scroll view, ensuring the Walker can always complete a sale without scrolling.",
+    "Include the `auth_hero` image on the login screen, overlaid with a top-to-bottom vertical gradient scrim (transparent to `surfaceInverse`) to ensure the white wordmark and login switch are perfectly readable.",
+    "For the Supervisor 'Approve/Reject' buttons, implement direct mechanical interactions. No soft ripples. Just immediate color inversion (e.g., White background becomes Black on press)."
+  ]
+}
