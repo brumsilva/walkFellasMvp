@@ -86,3 +86,10 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials

@@ -27,6 +27,7 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "walkfellas-dev-secret-CHANGE-ME-in-pr
 JWT_ALGO = "HS256"
 ACCESS_MIN = 12 * 60  # 12 hours (event-length shifts)
 TERMINAL_SECRET = os.environ.get("TERMINAL_WEBHOOK_SECRET", "walkfellas-terminal-demo-secret")
+TERMS_VERSION = os.environ.get("TERMS_VERSION", "2026.1")
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -252,6 +253,19 @@ async def me(user: dict = Depends(current_user)):
     return user
 
 
+@api.post("/auth/walker/accept-terms")
+async def accept_walker_terms(user: dict = Depends(require_roles("walker"))):
+    """Records the walker's acceptance of the in-app Terms of Use, shown as the
+    final slide of the onboarding carousel on first login. Declining keeps this
+    field null, which the app treats as 'must show onboarding again'."""
+    accepted_at = now_utc().isoformat()
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"terms_accepted_at": accepted_at, "terms_version": TERMS_VERSION}}
+    )
+    return {"ok": True, "terms_accepted_at": accepted_at, "terms_version": TERMS_VERSION}
+
+
 # ---------- Events (admin) ----------
 @api.post("/events")
 async def create_event(body: EventCreate, user=Depends(require_roles("admin"))):
@@ -353,6 +367,8 @@ async def create_walker(body: WalkerCreate, user=Depends(require_roles("admin", 
         "event_id": body.event_id,
         "pin_hash": hash_secret(body.pin),
         "terminal_code": body.terminal_code.upper() if body.terminal_code else None,
+        "terms_accepted_at": None,
+        "terms_version": None,
         "status": "active",
         "created_at": now_utc().isoformat(),
     }
