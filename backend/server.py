@@ -262,6 +262,28 @@ async def list_events(user=Depends(current_user)):
     return events
 
 
+class EventUpdate(BaseModel):
+    name: Optional[str] = None
+    venue: Optional[str] = None
+    code: Optional[str] = None
+
+
+@api.put("/events/{event_id}")
+async def update_event(event_id: str, body: EventUpdate, user=Depends(require_roles("admin"))):
+    ev = await db.events.find_one({"id": event_id})
+    if not ev:
+        raise HTTPException(404, "Event not found")
+    updates = {k: v for k, v in body.dict().items() if v is not None}
+    if "code" in updates:
+        updates["code"] = updates["code"].upper()
+        clash = await db.events.find_one({"code": updates["code"], "id": {"$ne": event_id}})
+        if clash:
+            raise HTTPException(400, "Event code already exists")
+    if updates:
+        await db.events.update_one({"id": event_id}, {"$set": updates})
+    return await db.events.find_one({"id": event_id}, {"_id": 0})
+
+
 # ---------- Products / Catalog ----------
 @api.post("/products")
 async def create_product(body: ProductCreate, user=Depends(require_roles("admin"))):
@@ -281,6 +303,26 @@ async def list_products(event_id: Optional[str] = None, user=Depends(current_use
     elif user["role"] == "walker":
         q["event_id"] = user["event_id"]
     return await db.products.find(q, {"_id": 0}).to_list(1000)
+
+
+class ProductUpdate(BaseModel):
+    sku: Optional[str] = None
+    name: Optional[str] = None
+    price: Optional[float] = None
+    category: Optional[str] = None
+
+
+@api.put("/products/{product_id}")
+async def update_product(product_id: str, body: ProductUpdate, user=Depends(require_roles("admin"))):
+    p = await db.products.find_one({"id": product_id})
+    if not p:
+        raise HTTPException(404, "Product not found")
+    updates = {k: v for k, v in body.dict().items() if v is not None}
+    if "sku" in updates:
+        updates["sku"] = updates["sku"].upper()
+    if updates:
+        await db.products.update_one({"id": product_id}, {"$set": updates})
+    return await db.products.find_one({"id": product_id}, {"_id": 0})
 
 
 # ---------- Walker management ----------

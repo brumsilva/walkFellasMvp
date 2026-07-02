@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, TextInput, Modal } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '@/src/lib/api';
@@ -117,7 +117,8 @@ export default function Walkers() {
       </ScrollView>
 
       <Modal visible={showAssign} animationType="slide" onRequestClose={() => setShowAssign(false)}>
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>ASSIGN BAG</Text>
@@ -149,6 +150,7 @@ export default function Walkers() {
             <View style={{ height: 40 }} />
           </ScrollView>
         </SafeAreaView>
+        </SafeAreaProvider>
       </Modal>
     </SafeAreaView>
   );

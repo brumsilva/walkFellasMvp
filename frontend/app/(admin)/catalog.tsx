@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Modal, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '@/src/lib/api';
@@ -8,13 +8,17 @@ import { theme } from '@/src/lib/theme';
 import { hap } from '@/src/lib/haptics';
 import { useToast } from '@/src/lib/toast';
 
+type Product = { id: string; sku: string; name: string; price: number; category?: string; event_id: string };
+type EventItem = { id: string; code: string; name: string };
+
 export default function Catalog() {
   const toast = useToast();
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<EventItem[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<string>('');
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [sku, setSku] = useState('');
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -22,12 +26,12 @@ export default function Catalog() {
 
   const load = useCallback(async () => {
     try {
-      const ev = await api<any[]>('/events');
+      const ev = await api<EventItem[]>('/events');
       setEvents(ev);
       const eid = selectedEvent || ev[0]?.id || '';
       setSelectedEvent(eid);
       if (eid) {
-        const pr = await api<any[]>(`/products?event_id=${eid}`);
+        const pr = await api<Product[]>(`/products?event_id=${eid}`);
         setProducts(pr);
       }
     } catch (e: any) { toast.show(e.message, 'error'); }
@@ -35,13 +39,40 @@ export default function Catalog() {
   }, [selectedEvent, toast]);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const create = async () => {
+  const openNew = () => {
+    setEditingId(null);
+    setSku(''); setName(''); setPrice('');
+    setModal(true);
+  };
+
+  const openEdit = (p: Product) => {
+    hap.light();
+    setEditingId(p.id);
+    setSku(p.sku);
+    setName(p.name);
+    setPrice(String(p.price));
+    setModal(true);
+  };
+
+  const submit = async () => {
     if (!sku || !name || !price) { toast.show('All fields required', 'error'); return; }
     setBusy(true);
     try {
-      await api('/products', { method: 'POST', body: JSON.stringify({ sku, name, price: parseFloat(price), event_id: selectedEvent, category: 'other' }) });
-      hap.success(); toast.show('Product added', 'success');
-      setSku(''); setName(''); setPrice(''); setModal(false);
+      if (editingId) {
+        await api(`/products/${editingId}`, {
+          method: 'PUT',
+          body: JSON.stringify({ sku, name, price: parseFloat(price) }),
+        });
+        toast.show('Product updated', 'success');
+      } else {
+        await api('/products', {
+          method: 'POST',
+          body: JSON.stringify({ sku, name, price: parseFloat(price), event_id: selectedEvent, category: 'other' }),
+        });
+        toast.show('Product added', 'success');
+      }
+      hap.success();
+      setModal(false);
       await load();
     } catch (e: any) { hap.error(); toast.show(e.message, 'error'); }
     finally { setBusy(false); }
@@ -53,7 +84,7 @@ export default function Catalog() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>CATALOG</Text>
-        <Pressable style={styles.addBtn} onPress={() => setModal(true)} testID="new-product" disabled={!selectedEvent}>
+        <Pressable style={styles.addBtn} onPress={openNew} testID="new-product" disabled={!selectedEvent}>
           <Ionicons name="add" size={22} color="#FFF" />
           <Text style={styles.addBtnText}>NEW</Text>
         </Pressable>
@@ -72,34 +103,42 @@ export default function Catalog() {
       </ScrollView>
       <ScrollView contentContainerStyle={{ padding: 12, gap: 6 }}>
         {products.map((p) => (
-          <View key={p.id} style={styles.row}>
+          <Pressable
+            key={p.id}
+            style={styles.row}
+            testID={`product-${p.sku}`}
+            onPress={() => openEdit(p)}
+          >
             <View style={{ flex: 1 }}>
               <Text style={styles.pSku}>{p.sku}</Text>
               <Text style={styles.pName}>{p.name}</Text>
             </View>
             <Text style={styles.pPrice}>€{p.price.toFixed(2)}</Text>
-          </View>
+            <Ionicons name="chevron-forward" size={20} color={theme.color.muted} style={{ marginLeft: 8 }} />
+          </Pressable>
         ))}
       </ScrollView>
 
       <Modal visible={modal} animationType="slide" onRequestClose={() => setModal(false)}>
-        <SafeAreaView style={styles.container} edges={['top']}>
-          <View style={styles.header}>
-            <Text style={styles.title}>NEW PRODUCT</Text>
-            <Pressable onPress={() => setModal(false)}><Ionicons name="close" size={28} /></Pressable>
-          </View>
-          <View style={{ padding: 16, gap: 12 }}>
-            <Text style={styles.label}>SKU</Text>
-            <TextInput style={styles.input} value={sku} onChangeText={(v) => setSku(v.toUpperCase())} placeholder="BEER-500" autoCapitalize="characters" testID="pr-sku" />
-            <Text style={styles.label}>NAME</Text>
-            <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Craft Lager 500ml" testID="pr-name" />
-            <Text style={styles.label}>PRICE (€)</Text>
-            <TextInput style={styles.input} value={price} onChangeText={setPrice} placeholder="6.50" keyboardType="decimal-pad" testID="pr-price" />
-            <Pressable style={styles.submit} onPress={create} disabled={busy} testID="pr-create">
-              {busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>ADD →</Text>}
-            </Pressable>
-          </View>
-        </SafeAreaView>
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+            <View style={styles.header}>
+              <Text style={styles.title}>{editingId ? 'EDIT PRODUCT' : 'NEW PRODUCT'}</Text>
+              <Pressable onPress={() => setModal(false)} testID="close-modal" hitSlop={12}><Ionicons name="close" size={28} /></Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.label}>SKU</Text>
+              <TextInput style={styles.input} value={sku} onChangeText={(v) => setSku(v.toUpperCase())} placeholder="BEER-500" autoCapitalize="characters" testID="pr-sku" />
+              <Text style={styles.label}>NAME</Text>
+              <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Craft Lager 500ml" testID="pr-name" />
+              <Text style={styles.label}>PRICE (€)</Text>
+              <TextInput style={styles.input} value={price} onChangeText={setPrice} placeholder="6.50" keyboardType="decimal-pad" testID="pr-price" />
+              <Pressable style={styles.submit} onPress={submit} disabled={busy} testID="pr-create">
+                {busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>{editingId ? 'SAVE →' : 'ADD →'}</Text>}
+              </Pressable>
+            </ScrollView>
+          </SafeAreaView>
+        </SafeAreaProvider>
       </Modal>
     </SafeAreaView>
   );

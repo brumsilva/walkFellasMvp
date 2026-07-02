@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Modal, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '@/src/lib/api';
@@ -93,60 +93,62 @@ export default function Team() {
       </ScrollView>
 
       <Modal visible={modal} animationType="slide" onRequestClose={() => setModal(false)}>
-        <SafeAreaView style={styles.container} edges={['top']}>
-          <View style={styles.header}>
-            <Text style={styles.title}>NEW {modalType === 'walker' ? 'WALKER' : 'STAFF'}</Text>
-            <Pressable onPress={() => setModal(false)}><Ionicons name="close" size={28} /></Pressable>
-          </View>
-          <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-            <Text style={styles.label}>NAME</Text>
-            <TextInput style={styles.input} value={name} onChangeText={setName} testID="t-name" />
+        <SafeAreaProvider>
+          <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+            <View style={styles.header}>
+              <Text style={styles.title}>NEW {modalType === 'walker' ? 'WALKER' : 'STAFF'}</Text>
+              <Pressable onPress={() => setModal(false)} testID="close-modal" hitSlop={12}><Ionicons name="close" size={28} /></Pressable>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.label}>NAME</Text>
+              <TextInput style={styles.input} value={name} onChangeText={setName} testID="t-name" />
 
-            {modalType === 'walker' ? (
-              <>
-                <Text style={styles.label}>EVENT</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-                  {events.map((e) => (
-                    <Pressable
-                      key={e.id}
-                      style={[styles.chip, eventId === e.id && styles.chipActive]}
-                      onPress={() => { hap.light(); setEventId(e.id); }}
-                      testID={`t-event-${e.code}`}
-                    >
-                      <Text style={[styles.chipText, eventId === e.id && { color: '#FFF' }]}>{e.code}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <Text style={styles.label}>PIN (4-6 DIGITS)</Text>
-                <TextInput style={styles.input} value={pin} onChangeText={setPin} keyboardType="number-pad" maxLength={6} testID="t-pin" />
-              </>
-            ) : (
-              <>
-                <Text style={styles.label}>EMAIL</Text>
-                <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" testID="t-email" />
-                <Text style={styles.label}>PASSWORD</Text>
-                <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry testID="t-password" />
-                <Text style={styles.label}>ROLE</Text>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
-                  {(['supervisor', 'admin'] as const).map((r) => (
-                    <Pressable
-                      key={r}
-                      style={[styles.chip, role === r && styles.chipActive]}
-                      onPress={() => setRole(r)}
-                      testID={`t-role-${r}`}
-                    >
-                      <Text style={[styles.chipText, role === r && { color: '#FFF' }]}>{r.toUpperCase()}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            )}
+              {modalType === 'walker' ? (
+                <>
+                  <Text style={styles.label}>EVENT</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                    {events.map((e) => (
+                      <Pressable
+                        key={e.id}
+                        style={[styles.chip, eventId === e.id && styles.chipActive]}
+                        onPress={() => { hap.light(); setEventId(e.id); }}
+                        testID={`t-event-${e.code}`}
+                      >
+                        <Text style={[styles.chipText, eventId === e.id && { color: '#FFF' }]}>{e.code}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={styles.label}>PIN (4-6 DIGITS)</Text>
+                  <TextInput style={styles.input} value={pin} onChangeText={setPin} keyboardType="number-pad" maxLength={6} testID="t-pin" />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.label}>EMAIL</Text>
+                  <TextInput style={styles.input} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" testID="t-email" />
+                  <Text style={styles.label}>PASSWORD</Text>
+                  <TextInput style={styles.input} value={password} onChangeText={setPassword} secureTextEntry testID="t-password" />
+                  <Text style={styles.label}>ROLE</Text>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    {(['supervisor', 'admin'] as const).map((r) => (
+                      <Pressable
+                        key={r}
+                        style={[styles.chip, role === r && styles.chipActive]}
+                        onPress={() => setRole(r)}
+                        testID={`t-role-${r}`}
+                      >
+                        <Text style={[styles.chipText, role === r && { color: '#FFF' }]}>{r.toUpperCase()}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              )}
 
-            <Pressable style={styles.submit} onPress={submit} disabled={busy} testID="t-submit">
-              {busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>CREATE →</Text>}
-            </Pressable>
-          </ScrollView>
-        </SafeAreaView>
+              <Pressable style={styles.submit} onPress={submit} disabled={busy} testID="t-submit">
+                {busy ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>CREATE →</Text>}
+              </Pressable>
+            </ScrollView>
+          </SafeAreaView>
+        </SafeAreaProvider>
       </Modal>
     </SafeAreaView>
   );
