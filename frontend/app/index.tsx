@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, TextInput,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
+  Animated, LayoutChangeEvent,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,10 +16,15 @@ import { Logo } from '@/src/components/Logo';
 
 type Mode = 'walker' | 'staff';
 
+const SEGMENT_PADDING = 4;
+const SEGMENT_GAP = 4;
+
 export default function AuthScreen() {
   const router = useRouter();
   const toast = useToast();
   const [mode, setMode] = useState<Mode>('walker');
+  const [segmentTabWidth, setSegmentTabWidth] = useState(0);
+  const slideX = useRef(new Animated.Value(0)).current;
   const [eventCode, setEventCode] = useState('');
   const [pin, setPin] = useState('');
   const [email, setEmail] = useState('');
@@ -35,6 +41,24 @@ export default function AuthScreen() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!segmentTabWidth) return;
+    Animated.spring(slideX, {
+      toValue: mode === 'walker' ? 0 : segmentTabWidth + SEGMENT_GAP,
+      useNativeDriver: true,
+      tension: 120,
+      friction: 14,
+    }).start();
+  }, [mode, segmentTabWidth, slideX]);
+
+  const onSegmentLayout = (e: LayoutChangeEvent) => {
+    const total = e.nativeEvent.layout.width;
+    const inner = total - SEGMENT_PADDING * 2;
+    const tabWidth = (inner - SEGMENT_GAP) / 2;
+    setSegmentTabWidth(tabWidth);
+    slideX.setValue(mode === 'walker' ? 0 : tabWidth + SEGMENT_GAP);
+  };
 
   const routeByRole = (role: string) => {
     if (role === 'walker') router.replace('/(walker)/pos');
@@ -84,9 +108,8 @@ export default function AuthScreen() {
         {/* Hero */}
         <View style={styles.hero}>
           <Image
-            source={{ uri: 'https://images.pexels.com/photos/13830767/pexels-photo-13830767.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940' }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
+            source={{ uri: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ3hxan37JAKQ8e_oT_A1N_rXw6RsrGvzPIdrHQWprSSDzU1vulfRhg_XE&s=10' }}
+            style={StyleSheet.absoluteFillObject}
           />
           <LinearGradient
             colors={['rgba(230,57,70,0.15)', 'rgba(26,26,31,0.95)']}
@@ -94,17 +117,25 @@ export default function AuthScreen() {
           />
           <View style={styles.heroContent}>
             <Logo size={44} color="onBrand" style={{ marginBottom: 12 }} />
-            <Text style={styles.heroTitle}>Sell smarter,{'\n'}shift by shift.</Text>
-            <Text style={styles.heroSub}>Real-time stock. Fair to walkers. Auditable to the last unit.</Text>
+            <Text style={styles.heroTitle}>Sell smarter, shift by shift.</Text>
           </View>
         </View>
 
         {/* Card */}
         <View style={styles.card}>
-          <View style={styles.segment}>
+          <View style={styles.segment} onLayout={onSegmentLayout}>
+            {segmentTabWidth > 0 && (
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.segmentIndicator,
+                  { width: segmentTabWidth, transform: [{ translateX: slideX }] },
+                ]}
+              />
+            )}
             <Pressable
               testID="tab-walker"
-              style={[styles.segBtn, mode === 'walker' && styles.segBtnActive]}
+              style={styles.segBtn}
               onPress={() => { hap.light(); setMode('walker'); }}
             >
               <Ionicons name="walk" size={16} color={mode === 'walker' ? '#FFF' : theme.color.muted} />
@@ -112,7 +143,7 @@ export default function AuthScreen() {
             </Pressable>
             <Pressable
               testID="tab-staff"
-              style={[styles.segBtn, mode === 'staff' && styles.segBtnActive]}
+              style={styles.segBtn}
               onPress={() => { hap.light(); setMode('staff'); }}
             >
               <Ionicons name="briefcase" size={16} color={mode === 'staff' ? '#FFF' : theme.color.muted} />
@@ -177,7 +208,7 @@ export default function AuthScreen() {
                   style={styles.input}
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  placeholder="admin@walkfellas.io"
+                  placeholder="email@example.com"
                   placeholderTextColor={theme.color.muted}
                 />
               </View>
@@ -192,13 +223,6 @@ export default function AuthScreen() {
                   placeholder="••••••••"
                   placeholderTextColor={theme.color.muted}
                 />
-              </View>
-              <View style={styles.hintBox}>
-                <Ionicons name="key-outline" size={14} color={theme.color.brand} />
-                <View>
-                  <Text style={styles.hintText}>admin@walkfellas.io · admin123</Text>
-                  <Text style={styles.hintText}>sup@walkfellas.io · sup123</Text>
-                </View>
               </View>
             </View>
           )}
@@ -226,12 +250,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.color.surfaceSecondary },
   center: { alignItems: 'center', justifyContent: 'center' },
   hero: {
-    height: 300, position: 'relative', overflow: 'hidden',
+    height: 250, position: 'relative', overflow: 'hidden',
     borderBottomLeftRadius: theme.radius.xxl,
     borderBottomRightRadius: theme.radius.xxl,
   },
   heroContent: { position: 'absolute', bottom: 28, left: 24, right: 24 },
-  heroTitle: { fontFamily: theme.font.extrabold, fontSize: 30, color: '#FFF', lineHeight: 34, letterSpacing: -0.5 },
+  heroTitle: { fontFamily: theme.font.extrabold, fontSize: 24, color: '#FFF', lineHeight: 34, letterSpacing: -0.5, marginBottom: 18 },
   heroSub: { fontFamily: theme.font.medium, fontSize: 13, color: 'rgba(255,255,255,0.9)', marginTop: 8, lineHeight: 18 },
   card: {
     margin: 16, marginTop: -28,
@@ -245,14 +269,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: theme.color.surfaceSecondary,
     borderRadius: theme.radius.pill,
-    padding: 4,
-    gap: 4,
+    padding: SEGMENT_PADDING,
+    gap: SEGMENT_GAP,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  segmentIndicator: {
+    position: 'absolute',
+    top: SEGMENT_PADDING,
+    left: SEGMENT_PADDING,
+    bottom: SEGMENT_PADDING,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.color.brand,
+    ...(theme.shadow.sm as any),
   },
   segBtn: {
     flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 12, borderRadius: theme.radius.pill,
+    paddingVertical: 12, borderRadius: theme.radius.pill, zIndex: 1,
   },
-  segBtnActive: { backgroundColor: theme.color.brand, ...(theme.shadow.sm as any) },
   segText: { fontFamily: theme.font.bold, fontSize: 13, color: theme.color.muted, letterSpacing: 0.2 },
   segTextActive: { color: '#FFF' },
   field: { gap: 6 },

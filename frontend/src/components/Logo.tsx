@@ -61,8 +61,8 @@ export function Logo({ size = 40, variant = 'full', color = 'brand', style }: Pr
           <Text style={[styles.word, { color: wordColor, fontSize: size * 0.55, lineHeight: size * 0.65 }]}>
             walk<Text style={{ color: markColor }}>fellas</Text>
           </Text>
-          <Text style={[styles.tag, { color: theme.color.muted, fontSize: Math.max(9, size * 0.16) }]}>
-            EVERY BOTTLE, TRACKED
+          <Text style={[styles.tag, { color: theme.color.surface, fontSize: Math.max(9, size * 0.16) }]}>
+            HEADIN' OUT TO THE CRAIC
           </Text>
         </View>
       )}
