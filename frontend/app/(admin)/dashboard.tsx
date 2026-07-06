@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 16,
-    backgroundColor: theme.color.surface,
+    backgroundColor: theme.color.surfaceSecondary,
   },
   hi: { fontFamily: theme.font.extrabold, fontSize: 22, color: theme.color.onSurface, letterSpacing: -0.4 },
   hiSub: { fontFamily: theme.font.medium, fontSize: 12, color: theme.color.muted, marginTop: 2 },
