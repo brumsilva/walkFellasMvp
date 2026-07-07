@@ -155,7 +155,7 @@ class BagAssignment(BaseModel):
 
 class SaleItem(BaseModel):
     product_id: str
-    quantity: int
+    quantity: int = Field(ge=1)
 
 
 class SaleCreate(BaseModel):
@@ -165,7 +165,7 @@ class SaleCreate(BaseModel):
 
 class WasteCreate(BaseModel):
     product_id: str
-    quantity: int
+    quantity: int = Field(ge=1)
     category: Literal["broken", "spilled", "expired", "other"]
     photo_b64: Optional[str] = None
     notes: Optional[str] = None
@@ -192,6 +192,19 @@ class WasteValidate(BaseModel):
 class CloseShift(BaseModel):
     physical_count: List[SaleItem]
 
+class InventorySetItem(BaseModel):
+    product_id: str
+    quantity: int = Field(ge=0)
+
+
+class InventorySet(BaseModel):
+    items: List[InventorySetItem]
+
+
+class InventoryAdjust(BaseModel):
+    quantity: Optional[int] = Field(default=None, ge=0)      # absolute value
+    adjustment: Optional[int] = None    # delta (+/-)
+
 
 # ---------- Ledger helper ----------
 async def record_movement(shift_id: str, product_id: str, qty: int, mtype: str, actor_id: str, ref: Optional[str] = None):
@@ -216,6 +229,67 @@ async def shift_stock_map(shift_id: str) -> dict:
         sign = 1 if m["type"] in ("initial", "restock", "return_in") else -1
         stock[pid] = stock.get(pid, 0) + sign * int(m["quantity"])
     return stock
+
+
+async def compute_event_inventory(event_id: str) -> dict:
+    """
+    Compute event-level inventory snapshot.
+    available = initial_quantity - warehouse_out + warehouse_in
+    where:
+      - warehouse_out: movements type initial/restock (bags to walkers)
+      - warehouse_in:  movements type return_in (rejections/close return)
+    """
+    inv_rows = await db.find("event_inventory", {"event_id": event_id})
+    products = await db.find("products", {"event_id": event_id})
+    product_map = {p["id"]: p for p in products}
+
+    base: dict = {}
+    for r in inv_rows:
+        pid = r["product_id"]
+        base[pid] = {
+            "product_id": pid,
+            "sku": (product_map.get(pid) or {}).get("sku"),
+            "name": (product_map.get(pid) or {}).get("name"),
+            "initial_quantity": int(r.get("initial_quantity", 0)),
+            "warehouse_out": 0,
+            "warehouse_in": 0,
+            "available": int(r.get("initial_quantity", 0)),
+        }
+
+    shifts = await db.find("shifts", {"event_id": event_id}, limit=5000)
+    for s in shifts:
+        movements = await db.find("movements", {"shift_id": s["id"]}, limit=5000)
+        for m in movements:
+            pid = m["product_id"]
+            if pid not in base:
+                # Products can appear via old data before event_inventory setup.
+                prod = product_map.get(pid) or await db.find_one("products", {"id": pid})
+                base[pid] = {
+                    "product_id": pid,
+                    "sku": (prod or {}).get("sku"),
+                    "name": (prod or {}).get("name"),
+                    "initial_quantity": 0,
+                    "warehouse_out": 0,
+                    "warehouse_in": 0,
+                    "available": 0,
+                }
+            qty = int(m.get("quantity", 0))
+            mtype = m.get("type")
+            if mtype in ("initial", "restock"):
+                base[pid]["warehouse_out"] += qty
+            elif mtype == "return_in":
+                base[pid]["warehouse_in"] += qty
+
+    for item in base.values():
+        item["available"] = max(0, item["initial_quantity"] - item["warehouse_out"] + item["warehouse_in"])
+
+    items = sorted(base.values(), key=lambda x: ((x.get("sku") or ""), (x.get("product_id") or "")))
+    return {"event_id": event_id, "items": items}
+
+
+async def warehouse_stock_map(event_id: str) -> dict:
+    snapshot = await compute_event_inventory(event_id)
+    return {it["product_id"]: int(it["available"]) for it in snapshot["items"]}
 
 
 # ---------- Auth ----------
@@ -348,6 +422,75 @@ async def update_product(product_id: str, body: ProductUpdate, user=Depends(requ
     return await db.find_one("products", {"id": product_id})
 
 
+
+# ---------- Event Inventory (global stock) ----------
+@api.post("/events/{event_id}/inventory")
+async def set_event_inventory(event_id: str, body: InventorySet, user=Depends(require_roles("admin"))):
+    """Set or replace the initial inventory for an event."""
+    ev = await db.find_one("events", {"id": event_id})
+    if not ev:
+        raise HTTPException(404, "Event not found")
+    now = now_utc().isoformat()
+    results = []
+    for it in body.items:
+        existing = await db.find_one("event_inventory", {"event_id": event_id, "product_id": it.product_id})
+        if existing:
+            await db.update_one("event_inventory", {"id": existing["id"]}, {
+                "initial_quantity": it.quantity,
+                "updated_at": now,
+            })
+            results.append({"product_id": it.product_id, "initial_quantity": it.quantity, "action": "updated"})
+        else:
+            await db.insert_one("event_inventory", {
+                "id": new_id(),
+                "event_id": event_id,
+                "product_id": it.product_id,
+                "initial_quantity": it.quantity,
+                "created_at": now,
+                "updated_at": now,
+            })
+            results.append({"product_id": it.product_id, "initial_quantity": it.quantity, "action": "created"})
+    return {"ok": True, "items": results}
+
+
+@api.get("/events/{event_id}/inventory")
+async def get_event_inventory(event_id: str, user=Depends(current_user)):
+    """Full inventory breakdown for an event."""
+    ev = await db.find_one("events", {"id": event_id})
+    if not ev:
+        raise HTTPException(404, "Event not found")
+    return await compute_event_inventory(event_id)
+
+
+@api.put("/events/{event_id}/inventory/{product_id}")
+async def adjust_event_inventory(event_id: str, product_id: str, body: InventoryAdjust, user=Depends(require_roles("admin"))):
+    """Adjust a single product's initial quantity (absolute or delta)."""
+    existing = await db.find_one("event_inventory", {"event_id": event_id, "product_id": product_id})
+    now = now_utc().isoformat()
+    if body.quantity is not None:
+        new_qty = body.quantity
+    elif body.adjustment is not None:
+        current = int(existing["initial_quantity"]) if existing else 0
+        new_qty = max(0, current + body.adjustment)
+    else:
+        raise HTTPException(400, "Provide 'quantity' or 'adjustment'")
+    if existing:
+        await db.update_one("event_inventory", {"id": existing["id"]}, {
+            "initial_quantity": new_qty,
+            "updated_at": now,
+        })
+    else:
+        await db.insert_one("event_inventory", {
+            "id": new_id(),
+            "event_id": event_id,
+            "product_id": product_id,
+            "initial_quantity": new_qty,
+            "created_at": now,
+            "updated_at": now,
+        })
+    return {"ok": True, "product_id": product_id, "initial_quantity": new_qty}
+
+
 # ---------- Walker management ----------
 @api.post("/walkers")
 async def create_walker(body: WalkerCreate, user=Depends(require_roles("admin", "supervisor"))):
@@ -415,6 +558,14 @@ async def assign_bag(body: BagAssignment, user=Depends(require_roles("supervisor
     walker = await db.find_one("users", {"id": body.walker_id, "role": "walker"})
     if not walker:
         raise HTTPException(404, "Walker not found")
+    # Check warehouse stock before distributing
+    warehouse = await warehouse_stock_map(walker["event_id"])
+    for it in body.items:
+        available = warehouse.get(it["product_id"], 0)
+        if available < int(it["quantity"]):
+            prod = await db.find_one("products", {"id": it["product_id"]})
+            pname = prod["name"] if prod else it["product_id"]
+            raise HTTPException(400, f"Insufficient warehouse stock for {pname}: available={available}, requested={it['quantity']}")
     await db.update_many(
         "shifts",
         {"walker_id": body.walker_id, "status": "open"},
@@ -978,6 +1129,11 @@ async def dashboard(event_id: Optional[str] = None, user=Depends(require_roles("
     active_shifts = await db.count("shifts", {**q_ev, "status": "open"})
     pending_restocks = await db.count("restocks", {**q_ev, "status": "pending"})
     pending_waste = await db.count("waste_logs", {**q_ev, "status": "pending"})
+    
+    # Event inventory (global stock summary)
+    inventory = None
+    if event_id:
+        inventory = await compute_event_inventory(event_id)
 
     return {
         "total_sales": round(total_sales, 2),
@@ -987,6 +1143,7 @@ async def dashboard(event_id: Optional[str] = None, user=Depends(require_roles("
         "active_shifts": active_shifts,
         "pending_restocks": pending_restocks,
         "pending_waste": pending_waste,
+        "inventory": inventory,
     }
 
 
@@ -1049,6 +1206,24 @@ async def seed_data():
                 "id": new_id(), "sku": sku, "name": name, "price": price,
                 "category": cat, "event_id": event_id,
                 "created_at": now_utc().isoformat(),
+            })
+    # Event Inventory (initial stock for the event)
+    if await db.count("event_inventory", {"event_id": event_id}) == 0:
+        products_list = await db.find("products", {"event_id": event_id})
+        inv_defaults = {
+            "BEER-500": 500, "BEER-CIDER": 300, "WINE-RED": 200,
+            "WATER-500": 1000, "SODA-COLA": 400, "SNACK-CHIPS": 250,
+        }
+        now = now_utc().isoformat()
+        for p in products_list:
+            qty = inv_defaults.get(p["sku"], 100)
+            await db.insert_one("event_inventory", {
+                "id": new_id(),
+                "event_id": event_id,
+                "product_id": p["id"],
+                "initial_quantity": qty,
+                "created_at": now,
+                "updated_at": now,
             })
     # Walker(s)
     walker_count = await db.count("users", {"role": "walker", "event_id": event_id})

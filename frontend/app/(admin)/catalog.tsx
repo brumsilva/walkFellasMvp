@@ -119,7 +119,7 @@ export default function Catalog() {
                 <Ionicons name="close" size={20} color={theme.color.onSurface} />
               </Pressable>
             </View>
-            <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 12, backgroundColor: 'white', height: '100%' }} keyboardShouldPersistTaps="handled">
               <View>
                 <Text style={styles.label}>SKU</Text>
                 <TextInput style={styles.input} value={sku} onChangeText={(v) => setSku(v.toUpperCase())} placeholder="BEER-500" placeholderTextColor={theme.color.muted} autoCapitalize="characters" testID="pr-sku" />

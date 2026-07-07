@@ -155,7 +155,7 @@ export default function Team() {
                 <Ionicons name="close" size={20} color={theme.color.onSurface} />
               </Pressable>
             </View>
-            <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 12, backgroundColor: 'white' }} keyboardShouldPersistTaps="handled">
               <View>
                 <Text style={styles.label}>Name</Text>
                 <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={theme.color.muted} testID="t-name" />
@@ -286,7 +286,13 @@ const styles = StyleSheet.create({
   statusText: { color: theme.color.success, fontSize: 11, fontFamily: theme.font.bold, textTransform: 'capitalize' },
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.color.surfaceSecondary, alignItems: 'center', justifyContent: 'center' },
   label: { fontFamily: theme.font.semibold, fontSize: 12, color: theme.color.muted, letterSpacing: 0.3, marginBottom: 6 },
-  input: { backgroundColor: theme.color.surfaceSecondary, borderRadius: theme.radius.lg, padding: 14, fontSize: 15, fontFamily: theme.font.semibold, color: theme.color.onSurface },
+  input: { 
+    backgroundColor: theme.color.surfaceSecondary,
+    borderRadius: theme.radius.lg,
+    paddingVertical: 14, paddingHorizontal: 14,
+    fontSize: 16, fontFamily: theme.font.semibold,
+    color: theme.color.onSurface,
+  },
   chip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceSecondary },
   chipActive: { backgroundColor: theme.color.brand },
   chipText: { fontSize: 12, fontFamily: theme.font.bold, color: theme.color.onSurface, textTransform: 'capitalize' },

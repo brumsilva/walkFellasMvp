@@ -100,7 +100,7 @@ export default function Events() {
                 <Ionicons name="close" size={20} color={theme.color.onSurface} />
               </Pressable>
             </View>
-            <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={{ padding: 16, gap: 12, backgroundColor: 'white' }} keyboardShouldPersistTaps="handled">
               <View>
                 <Text style={styles.label}>Name</Text>
                 <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Summer Festival" placeholderTextColor={theme.color.muted} testID="ev-name" />
@@ -111,7 +111,7 @@ export default function Events() {
               </View>
               <View>
                 <Text style={styles.label}>Code</Text>
-                <TextInput style={styles.input} value={code} onChangeText={(v) => setCode(v.toUpperCase())} placeholder="FEST02" placeholderTextColor={theme.color.muted} autoCapitalize="characters" testID="ev-code" />
+                <TextInput style={styles.input} value={code} onChangeText={(v) => setCode(v.toUpperCase())} placeholder="e.g. FEST02" placeholderTextColor={theme.color.muted} autoCapitalize="characters" testID="ev-code" />
               </View>
               <Pressable style={styles.submit} onPress={submit} disabled={busy} testID="ev-create">
                 {busy ? <ActivityIndicator color="#FFF" /> : (
