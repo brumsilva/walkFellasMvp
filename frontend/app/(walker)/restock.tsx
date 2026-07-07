@@ -24,9 +24,19 @@ export default function Restock() {
   const [pending, setPending] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [hasShift, setHasShift] = useState(true);
 
   const load = useCallback(async () => {
     try {
+      // Check if walker has active shift first
+      const shiftRes = await api<any>('/shifts/current').catch(() => null);
+      if (!shiftRes?.shift) {
+        setHasShift(false);
+        setLoading(false);
+        return;
+      }
+      setHasShift(true);
+
       const [prods, restocks, sug] = await Promise.all([
         api<any>('/products'),
         api<any>('/restocks?status_filter=pending'),
@@ -80,7 +90,7 @@ export default function Restock() {
     try {
       const r = await mutate('/restocks', { items }, { label: `Restock ${items.length} items` });
       if (r.online) { hap.success(); toast.show('Restock requested', 'success'); }
-      else { hap.warning(); toast.show('Offline — request queued', 'info'); }
+      else { hap.warning(); toast.show('Offline \u2014 request queued', 'info'); }
       setQty({});
       await load();
     } catch (e: any) {
@@ -96,6 +106,33 @@ export default function Restock() {
   const hasSuggestions = suggestions.some((s) => s.suggested_qty > 0);
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={theme.color.brand} /></View>;
+
+  // ====== FIX 1: Show empty state when walker has no active bag ======
+  if (!hasShift) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.title}>Restock</Text>
+            <Text style={styles.subtitle}>Request more stock for your bag</Text>
+          </View>
+        </View>
+        <View style={styles.emptyState}>
+          <View style={styles.emptyIcon}>
+            <Ionicons name="bag-outline" size={48} color={theme.color.muted} />
+          </View>
+          <Text style={styles.emptyTitle}>No active bag</Text>
+          <Text style={styles.emptySubtitle}>
+            You need an active bag to request restocks.{'\n'}Ask your supervisor to assign one.
+          </Text>
+          <Pressable style={styles.retryBtn} onPress={load} testID="retry-restock">
+            <Ionicons name="refresh" size={16} color={theme.color.brand} />
+            <Text style={styles.retryText}>Check again</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -131,7 +168,7 @@ export default function Restock() {
                 {s && s.suggested_qty > 0 && (
                   <View style={styles.suggestChip}>
                     <Ionicons name="trending-up" size={11} color={theme.color.brand} />
-                    <Text style={styles.suggestChipText}>Suggested {s.suggested_qty} · {s.rate_per_min}/min</Text>
+                    <Text style={styles.suggestChipText}>Suggested {s.suggested_qty} {'\u00B7'} {s.rate_per_min}/min</Text>
                   </View>
                 )}
               </View>
@@ -178,6 +215,14 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingVertical: 16, backgroundColor: theme.color.surface, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontFamily: theme.font.extrabold, fontSize: 22, color: theme.color.onSurface, letterSpacing: -0.4 },
   subtitle: { fontFamily: theme.font.medium, fontSize: 12, color: theme.color.muted, marginTop: 2 },
+  // Empty state
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
+  emptyIcon: { width: 88, height: 88, borderRadius: 44, backgroundColor: theme.color.surfaceTertiary, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  emptyTitle: { fontFamily: theme.font.extrabold, fontSize: 20, color: theme.color.onSurface },
+  emptySubtitle: { fontFamily: theme.font.medium, fontSize: 14, color: theme.color.muted, textAlign: 'center', lineHeight: 20 },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.color.brandSoft, paddingHorizontal: 18, paddingVertical: 12, borderRadius: theme.radius.pill, marginTop: 8 },
+  retryText: { fontFamily: theme.font.bold, fontSize: 13, color: theme.color.brand },
+  // Rest
   suggestBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.color.brand, paddingHorizontal: 14, paddingVertical: 10, borderRadius: theme.radius.pill, ...(theme.shadow.sm as any) },
   suggestBtnText: { color: '#FFF', fontSize: 12, fontFamily: theme.font.bold },
   pendingBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: theme.color.warningSoft, paddingVertical: 10, paddingHorizontal: 20 },
