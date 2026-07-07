@@ -16,6 +16,11 @@ type Overview = {
 };
 type Product = { id: string; sku: string; name: string };
 type WasteLog = { id: string; walker_name: string; product_id: string; quantity: number; category: string; photo_b64?: string; timestamp: string };
+type EventItem = { id: string; code: string; name: string };
+type InventoryItem = {
+  product_id: string; sku: string; name: string;
+  initial_quantity: number; warehouse_out: number; warehouse_in: number; available: number;
+};
 
 export default function Dashboard() {
   const router = useRouter();
@@ -28,15 +33,49 @@ export default function Dashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [wasteLoading, setWasteLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Inventory state
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<string>('');
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [invLoading, setInvLoading] = useState(false);
+  const [invExpanded, setInvExpanded] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const [d, u] = await Promise.all([api<Overview>('/dashboard/overview'), getUser()]);
+      const [d, u, ev] = await Promise.all([
+        api<Overview>('/dashboard/overview'),
+        getUser(),
+        api<any>('/events'),
+      ]);
       setData(d); setUser(u);
+      const eventList = Array.isArray(ev) ? ev : Array.isArray(ev?.events) ? ev.events : [];
+      setEvents(eventList);
+      const firstId = eventList[0]?.id || '';
+      if (firstId) {
+        setSelectedEvent((prev) => prev || firstId);
+        const eid = firstId;
+        setInvLoading(true);
+        try {
+          const inv = await api<any>(`/events/${eid}/inventory`);
+          setInventory(inv?.items || []);
+        } catch { setInventory([]); }
+        finally { setInvLoading(false); }
+      }
     } catch {}
     setLoading(false);
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const loadInventoryForEvent = useCallback(async (eid: string) => {
+    hap.light();
+    setSelectedEvent(eid);
+    setInvLoading(true);
+    try {
+      const inv = await api<any>(`/events/${eid}/inventory`);
+      setInventory(inv?.items || []);
+    } catch { setInventory([]); }
+    finally { setInvLoading(false); }
+  }, []);
 
   const loadWaste = useCallback(async () => {
     setWasteLoading(true);
@@ -56,7 +95,7 @@ export default function Dashboard() {
     setBusyId(w.id);
     try {
       await api(`/waste/${w.id}/validate`, { method: 'POST', body: JSON.stringify({ approved }) });
-      approved ? hap.success() : hap.warning();
+      if (approved) { hap.success(); } else { hap.warning(); }
       toast.show(approved ? 'Approved' : 'Rejected', approved ? 'success' : 'info');
       await Promise.all([loadWaste(), load()]);
     } catch (e: any) { hap.error(); toast.show(e.message || 'Failed', 'error'); }
@@ -69,12 +108,19 @@ export default function Dashboard() {
 
   const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
 
+  // Inventory totals
+  const invTotalInitial = inventory.reduce((a, b) => a + b.initial_quantity, 0);
+  const invTotalOut = inventory.reduce((a, b) => a + b.warehouse_out, 0);
+  const invTotalIn = inventory.reduce((a, b) => a + b.warehouse_in, 0);
+  const invTotalAvailable = inventory.reduce((a, b) => a + b.available, 0);
+
   return (
+    <>
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View>
           <Text style={styles.hi}>Hello, {user?.name?.split(' ')[0] || 'Admin'}</Text>
-          <Text style={styles.hiSub}>Here's what's moving right now</Text>
+          <Text style={styles.hiSub}>{"Here's what's moving right now"}</Text>
         </View>
         <Pressable onPress={logout} testID="logout-btn" hitSlop={12} style={styles.avatarBtn}>
           <Ionicons name="log-out-outline" size={20} color={theme.color.muted} />
@@ -92,7 +138,7 @@ export default function Dashboard() {
             <Logo variant="mark" size={28} color="onBrand" />
           </View>
           <Text style={styles.heroLabel}>Total sales today</Text>
-          <Text style={styles.heroValue}>€{(data?.total_sales || 0).toFixed(2)}</Text>
+          <Text style={styles.heroValue}>{'\u20AC'}{(data?.total_sales || 0).toFixed(2)}</Text>
           <View style={styles.heroFooter}>
             <View style={styles.heroChip}>
               <Ionicons name="cube-outline" size={13} color="#FFF" />
@@ -139,6 +185,117 @@ export default function Dashboard() {
           </View>
         </View>
 
+        {/* ===== INVENTORY GENERAL SECTION ===== */}
+        <Pressable
+          style={styles.invHeader}
+          onPress={() => { hap.light(); setInvExpanded(!invExpanded); }}
+          testID="toggle-inventory"
+        >
+          <View style={[styles.invIconCircle]}>
+            <Ionicons name="layers" size={20} color={theme.color.info} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.invTitle}>General Inventory</Text>
+            <Text style={styles.invSubtitle}>Initial stock vs final balance</Text>
+          </View>
+          <Ionicons name={invExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={theme.color.muted} />
+        </Pressable>
+
+        {invExpanded && (
+          <View style={{ gap: 10 }}>
+            {/* Event selector chips */}
+            {events.length > 1 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {events.map((e) => (
+                  <Pressable
+                    key={e.id}
+                    style={[styles.evChip, selectedEvent === e.id && styles.evChipActive]}
+                    onPress={() => loadInventoryForEvent(e.id)}
+                    testID={`inv-ev-${e.code}`}
+                  >
+                    <Text style={[styles.evChipText, selectedEvent === e.id && { color: '#FFF' }]}>{e.code}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Summary totals row */}
+            <View style={styles.invSummaryRow}>
+              <View style={styles.invSummaryItem}>
+                <Text style={styles.invSummaryLabel}>Initial</Text>
+                <Text style={styles.invSummaryVal}>{invTotalInitial}</Text>
+              </View>
+              <View style={styles.invSummaryDivider} />
+              <View style={styles.invSummaryItem}>
+                <Text style={styles.invSummaryLabel}>Out</Text>
+                <Text style={[styles.invSummaryVal, { color: theme.color.brand }]}>{invTotalOut}</Text>
+              </View>
+              <View style={styles.invSummaryDivider} />
+              <View style={styles.invSummaryItem}>
+                <Text style={styles.invSummaryLabel}>Returns</Text>
+                <Text style={[styles.invSummaryVal, { color: theme.color.success }]}>{invTotalIn}</Text>
+              </View>
+              <View style={styles.invSummaryDivider} />
+              <View style={styles.invSummaryItem}>
+                <Text style={styles.invSummaryLabel}>Available</Text>
+                <Text style={[styles.invSummaryVal, { color: theme.color.info }]}>{invTotalAvailable}</Text>
+              </View>
+            </View>
+
+            {invLoading ? (
+              <View style={{ padding: 24, alignItems: 'center' }}><ActivityIndicator color={theme.color.brand} /></View>
+            ) : (
+              <View style={styles.invTable}>
+                {/* Table header */}
+                <View style={styles.invTableHead}>
+                  <Text style={[styles.invTh, { flex: 2.2, textAlign: 'left' }]}>Product</Text>
+                  <Text style={styles.invTh}>Initial</Text>
+                  <Text style={styles.invTh}>Out</Text>
+                  <Text style={styles.invTh}>In</Text>
+                  <Text style={styles.invTh}>Final</Text>
+                </View>
+                {inventory.map((item, idx) => {
+                  const pct = item.initial_quantity > 0 ? (item.available / item.initial_quantity) : 0;
+                  const isLow = pct < 0.25 && item.initial_quantity > 0;
+                  const isMid = pct >= 0.25 && pct < 0.5;
+                  const barColor = isLow ? theme.color.brand : isMid ? theme.color.warning : theme.color.success;
+                  return (
+                    <View key={item.product_id} style={[styles.invRow, idx === inventory.length - 1 && { borderBottomWidth: 0 }]}>
+                      <View style={{ flex: 2.2 }}>
+                        <Text style={styles.invRowName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={styles.invRowSku}>{item.sku}</Text>
+                        {/* Progress bar */}
+                        <View style={styles.progressBg}>
+                          <View style={[styles.progressFill, { width: `${Math.min(100, pct * 100)}%`, backgroundColor: barColor }]} />
+                        </View>
+                      </View>
+                      <Text style={styles.invTd}>{item.initial_quantity}</Text>
+                      <Text style={[styles.invTd, item.warehouse_out > 0 && { color: theme.color.brand }]}>{item.warehouse_out}</Text>
+                      <Text style={[styles.invTd, item.warehouse_in > 0 && { color: theme.color.success }]}>{item.warehouse_in}</Text>
+                      <Text style={[styles.invTdBold, isLow && { color: theme.color.brand }]}>{item.available}</Text>
+                    </View>
+                  );
+                })}
+                {inventory.length === 0 && (
+                  <View style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={styles.invEmptyText}>No inventory set for this event</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Balance verification footer */}
+            {inventory.length > 0 && !invLoading && (
+              <View style={styles.balanceCard}>
+                <Ionicons name="checkmark-circle" size={16} color={theme.color.success} />
+                <Text style={styles.balanceText}>
+                  Balance: {invTotalInitial} initial = {invTotalAvailable} available + {invTotalOut - invTotalIn} distributed
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         {/* Actionable waste alert */}
         <Pressable style={styles.actionCard} onPress={openWasteModal} testID="open-waste-validation">
           <View style={[styles.actionIcon, { backgroundColor: theme.color.brandSoft }]}>
@@ -163,7 +320,7 @@ export default function Dashboard() {
       <Modal visible={wasteOpen} animationType="slide" onRequestClose={() => setWasteOpen(false)}>
         <SafeAreaProvider>
           <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-            <View style={styles.header}>
+            <View style={styles.headerRow}>
               <View>
                 <Text style={styles.title}>Waste validation</Text>
                 <Text style={styles.hiSub}>{wasteItems.length} pending</Text>
@@ -202,7 +359,7 @@ export default function Dashboard() {
                       <Text style={styles.item}>{productMap[w.product_id]?.name || w.product_id}</Text>
                       <View style={styles.metaRow}>
                         <View style={styles.catChip}><Text style={styles.catChipText}>{w.category}</Text></View>
-                        <Text style={styles.qty}>× {w.quantity}</Text>
+                        <Text style={styles.qty}>{'\u00D7'} {w.quantity}</Text>
                       </View>
                       <View style={styles.actions}>
                         <Pressable
@@ -236,6 +393,7 @@ export default function Dashboard() {
         </SafeAreaProvider>
       </Modal>
     </SafeAreaView>
+    </>
   );
 }
 
@@ -243,6 +401,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.color.surfaceSecondary },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 16,
+    backgroundColor: theme.color.surfaceSecondary,
+  },
+  headerRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 16,
     backgroundColor: theme.color.surfaceSecondary,
@@ -272,6 +435,56 @@ const styles = StyleSheet.create({
   metricLabel: { fontFamily: theme.font.semibold, fontSize: 12, color: theme.color.muted },
   metricValue: { fontFamily: theme.font.black, fontSize: 26, color: theme.color.onSurface, letterSpacing: -0.5 },
 
+  // Inventory section styles
+  invHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: theme.color.surface, borderRadius: theme.radius.xl, padding: 16,
+    ...(theme.shadow.sm as any),
+  },
+  invIconCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.color.infoSoft, alignItems: 'center', justifyContent: 'center' },
+  invTitle: { fontFamily: theme.font.extrabold, fontSize: 16, color: theme.color.onSurface },
+  invSubtitle: { fontFamily: theme.font.medium, fontSize: 11, color: theme.color.muted, marginTop: 2 },
+  evChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: theme.radius.pill, backgroundColor: theme.color.surfaceTertiary },
+  evChipActive: { backgroundColor: theme.color.brand },
+  evChipText: { fontFamily: theme.font.bold, fontSize: 12, color: theme.color.onSurface },
+  invSummaryRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: theme.color.surface, borderRadius: theme.radius.xl, padding: 14,
+    ...(theme.shadow.sm as any),
+  },
+  invSummaryItem: { flex: 1, alignItems: 'center', gap: 4 },
+  invSummaryLabel: { fontFamily: theme.font.semibold, fontSize: 10, color: theme.color.muted, letterSpacing: 0.3, textTransform: 'uppercase' },
+  invSummaryVal: { fontFamily: theme.font.black, fontSize: 20, color: theme.color.onSurface },
+  invSummaryDivider: { width: 1, height: 32, backgroundColor: theme.color.divider },
+  invTable: {
+    backgroundColor: theme.color.surface, borderRadius: theme.radius.xl, overflow: 'hidden',
+    ...(theme.shadow.sm as any),
+  },
+  invTableHead: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: theme.color.surfaceInverse,
+    paddingVertical: 10, paddingHorizontal: 12,
+  },
+  invTh: { flex: 1, textAlign: 'center', color: '#FFF', fontSize: 10, fontFamily: theme.font.bold, letterSpacing: 0.3, textTransform: 'uppercase' },
+  invRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 12, paddingHorizontal: 12,
+    borderBottomWidth: 1, borderColor: theme.color.divider,
+  },
+  invRowName: { fontFamily: theme.font.bold, fontSize: 13, color: theme.color.onSurface },
+  invRowSku: { fontFamily: theme.font.mono, fontSize: 9, color: theme.color.muted, letterSpacing: 0.5, marginTop: 1 },
+  progressBg: { height: 4, backgroundColor: theme.color.surfaceTertiary, borderRadius: 2, marginTop: 5, overflow: 'hidden' },
+  progressFill: { height: 4, borderRadius: 2 },
+  invTd: { flex: 1, textAlign: 'center', fontFamily: theme.font.medium, fontSize: 13, color: theme.color.onSurface },
+  invTdBold: { flex: 1, textAlign: 'center', fontFamily: theme.font.extrabold, fontSize: 14, color: theme.color.onSurface },
+  invEmptyText: { fontFamily: theme.font.medium, fontSize: 13, color: theme.color.muted },
+  balanceCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: theme.color.successSoft, borderRadius: theme.radius.lg, padding: 12,
+  },
+  balanceText: { fontFamily: theme.font.semibold, fontSize: 11, color: theme.color.success, flex: 1 },
+
+  // Existing styles below
   actionCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: theme.color.surface, borderRadius: theme.radius.xl, padding: 14,
